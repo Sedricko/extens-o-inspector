@@ -46,7 +46,7 @@
     elements = [];
     const items = [];
     for (const el of document.body.querySelectorAll('*')) {
-      if (el.closest('#mspa-overlay,#mspa-panel,#mspa-rec')) continue;
+      if (el.closest('#mspa-overlay,#mspa-panel,#mspa-rec,#mspa-fill')) continue;
       const react = reactInfo(el);
       const clickable = react && react.handlers.some(h => /^on(Click|MouseDown|PointerDown|KeyDown|Change|Submit)$/.test(h));
       if (!el.matches(INTERACTIVE) && !clickable) continue;

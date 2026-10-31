@@ -2,7 +2,7 @@
 // Quem assina e envia a chamada e o proprio site. Este script NAO clica em "Publicar Frete".
 (() => {
   if (window.__MSPA_FILL) return;
-  const OURS = '#mspa-rec,#mspa-panel,#mspa-overlay';
+  const OURS = '#mspa-rec,#mspa-panel,#mspa-overlay,#mspa-fill';
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const norm = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
   const visible = el => el.getClientRects().length > 0;
@@ -49,6 +49,9 @@
       const f = n.querySelector('input:not([type=hidden]),textarea');
       if (f) return f;
     }
+    // campo sem texto de rotulo na tela: o nome pode estar no placeholder ou no aria-label
+    return [...document.querySelectorAll('input:not([type=hidden]),textarea')]
+      .find(e => visible(e) && [e.placeholder, e.getAttribute('aria-label')].some(v => norm(v) === norm(label)));
   };
 
   const steps = {
@@ -61,11 +64,15 @@
       click(await waitFor(() => find(s.pick), `a opcao "${s.pick}"`));
       await sleep(400);
     },
-    async pick(s) { // abre uma lista e escolhe
-      click(await waitFor(() => find(s.open), `"${s.open}"`));
-      await sleep(400);
-      click(await waitFor(() => find(s.text), `a opcao "${s.text}"`));
-      await sleep(400);
+    async pick(s) { // abre uma lista e escolhe (o campo pode estar desabilitado ate o anterior ser escolhido)
+      let opt;
+      for (let i = 0; i < 3 && !opt; i++) {
+        click(await waitFor(() => find(s.open), `"${s.open}"`));
+        opt = await waitFor(() => find(s.text), '', 3000).catch(() => null);
+      }
+      if (!opt) throw new Error(`nao achei a opcao "${s.text}" (o campo "${s.open}" abriu?)`);
+      click(opt);
+      await sleep(500);
     },
     async toggle(s) { // liga so se ainda nao estiver ligado (clicar de novo desligaria)
       const el = await waitFor(() => find(s.text), `"${show(s.text)}"`);
@@ -107,11 +114,34 @@
     }
   };
 
-  window.__MSPA_FILL = fill;
+  const banner = (ok, text) => {
+    const old = document.getElementById('mspa-fill');
+    if (old) old.remove();
+    const host = document.createElement('div');
+    host.id = 'mspa-fill';
+    const root = host.attachShadow({ mode: 'closed' });
+    root.innerHTML = `<style>div{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:2147483647;font:13px system-ui,sans-serif;padding:10px 14px;
+      border-radius:8px;color:#fff;max-width:640px;display:flex;gap:10px;align-items:center;background:${ok ? '#15803d' : '#b91c1c'}}button{font:inherit;cursor:pointer}</style>
+      <div role="status"><span></span><button>Fechar</button></div>`;
+    root.querySelector('span').textContent = text;
+    root.querySelector('button').onclick = () => host.remove();
+    document.documentElement.append(host);
+  };
+  const doFill = fill;
+  const fillAndTell = async list => {
+    const r = await doFill(list);
+    const s = r.ok ? null : JSON.parse(r.step);
+    banner(r.ok, r.ok
+      ? `Master SPA: formulario preenchido (${r.done} passos). Confira tudo e clique em Publicar Frete.`
+      : `Master SPA: parou no passo ${r.done + 1} (${s.label || s.open || (typeof s.text === 'string' ? s.text : s.text && (s.text.start || s.text.re))}): ${r.error}. O que ja foi preenchido ficou na tela.`);
+    return r;
+  };
+
+  window.__MSPA_FILL = fillAndTell;
   window.addEventListener('message', async ev => {
     const d = ev.data;
     if (ev.source !== window || !d || d.mspa !== 'req' || !/^fill(-ready)?$/.test(d.cmd)) return;
-    const res = d.cmd === 'fill-ready' ? { ready: !!find('Local da coleta') } : await fill(d.arg); // pronto = o formulario ja esta na tela
+    const res = d.cmd === 'fill-ready' ? { ready: !!find('Local da coleta') } : await fillAndTell(d.arg); // pronto = o formulario ja esta na tela
     window.postMessage({ mspa: 'res', id: d.id, res }, '*');
   });
 })();

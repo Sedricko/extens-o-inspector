@@ -134,11 +134,12 @@ async function fbDeleteTest() {
   return { deleted: lastTest.code };
 }
 
-// Teste: preenche o formulario "Criar frete" numa aba em segundo plano (sem publicar) e mostra a aba no fim.
+// Teste: preenche o formulario "Criar frete" numa aba em segundo plano (sem publicar). A aba fica aberta, sem tomar o foco.
 // Os textos sao os que aparecem na tela e que a gravacao capturou.
 const FILL_TEST = [
   { type: 'text', label: 'Local da coleta', value: 'Goiânia', pick: 'Goiânia - GO' },
   { type: 'text', label: 'Local da entrega', value: 'São Paulo', pick: 'São Paulo - SP' },
+  { type: 'pick', open: 'Tipo da carga', text: 'Carga Geral' }, // a Especie so habilita depois do Tipo
   { type: 'pick', open: 'Espécie da carga', text: 'Pallet' },
   { type: 'text', label: 'Qual produto será carregado?', value: 'TESTE' },
   { type: 'toggle', text: 'Conforme peso da carga' },
@@ -154,10 +155,6 @@ const FILL_TEST = [
 async function fbFillTest(base = FB.site) { // base: so o teste automatico muda
   const tab = await chrome.tabs.create({ url: base + 'meus-fretes/cadastrar', active: false });
   const ask = (cmd, arg) => chrome.tabs.sendMessage(tab.id, { cmd, arg });
-  const show = async () => { // mostra a aba: o resultado (ou onde parou) esta la para voce ver
-    await chrome.tabs.update(tab.id, { active: true });
-    await chrome.windows.update(tab.windowId, { focused: true });
-  };
   let last;
   // Abrir o endereco direto passa pelo login da Fretebras e a pagina recarrega: se isso cortar a conversa, tenta de novo.
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -168,11 +165,8 @@ async function fbFillTest(base = FB.site) { // base: so o teste automatico muda
     }
     if (!ready) break;
     try {
-      const r = await ask('fill', FILL_TEST);
-      await show();
-      return r;
+      return await ask('fill', FILL_TEST); // a aba fica em segundo plano: nao tira voce da sua aba
     } catch (e) { last = e; }
   }
-  await show();
-  throw new Error('Nao consegui preencher: ' + (last ? last.message : 'o formulario nao apareceu (a Central pediu login?).') + ' A aba ficou aberta para voce ver.');
+  throw new Error('Nao consegui preencher: ' + (last ? last.message : 'o formulario nao apareceu (a Central pediu login?).') + ' A aba ficou aberta em segundo plano.');
 }

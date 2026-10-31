@@ -55,5 +55,5 @@ document.getElementById('fbdel').onclick = async () => {
 document.getElementById('fbfill').onclick = async () => {
   show('Abrindo a aba em segundo plano e preenchendo... (pode levar ate 1 minuto)');
   const r = await bg('fb-fill');
-  show(r.error || (r.ok ? `Preenchido (${r.done} passos). Confira na aba que abriu e clique em Publicar Frete.` : `Parou no passo ${r.step}: ${r.error}`));
+  show(r.error || (r.ok ? `Preenchido (${r.done} passos). A aba ficou aberta em segundo plano: clique nela (a ultima da barra) para conferir e publicar.` : `Parou no passo ${r.step}: ${r.error}. A aba ficou aberta em segundo plano; a mesma mensagem esta nela.`));
 };
