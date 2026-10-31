@@ -15,29 +15,39 @@ const fbSet = patch => (fbQueue = fbQueue.then(async () => {
   await chrome.storage.session.set({ fb });
   return fb;
 }));
+// Validade de dentro do JWT (campo exp); 0 se nao for JWT.
+const jwtExp = tok => {
+  try { return JSON.parse(atob(String(tok).replace(/^Bearer /, '').split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).exp * 1000 || 0; } catch { return 0; }
+};
 const fromToken = t => ({
   access: t.access_token,
   ...(t.refresh_token && { refresh: t.refresh_token }), // a renovacao pode nao mandar outro: fica o anterior
-  accessExp: Date.now() + t.expires_in * 1000,
-  ...(t.refresh_expires_in && { refreshExp: Date.now() + t.refresh_expires_in * 1000 }),
+  accessExp: t.expires_in ? Date.now() + t.expires_in * 1000 : jwtExp(t.access_token),
+  ...((t.refresh_expires_in || jwtExp(t.refresh_token)) && {
+    refreshExp: t.refresh_expires_in ? Date.now() + t.refresh_expires_in * 1000 : jwtExp(t.refresh_token),
+  }),
 });
 
 async function fbSaveSession(msg) {
   if (msg.token) await fbSet(fromToken(msg.token));
   if (msg.headers) await fbSet({ headers: msg.headers, diag: msg.diag });
-  if (msg.auth) await fbSet({ auth: msg.auth, authAt: Date.now() });
+  if (msg.auth) await fbSet({ auth: msg.auth, authExp: jwtExp(msg.auth) || Date.now() + 10 * 60e3 }); // sem JWT: 10 min desde que o site usou
 }
 
 async function fbStatus() {
   const fb = await fbGet();
-  if (!fb.refresh) return { active: false };
-  return { active: Date.now() < fb.refreshExp, until: fb.refreshExp, lastTest: fb.lastTest || null, diag: fb.diag || null };
+  const until = Math.max(fb.refresh ? fb.refreshExp || 0 : 0, fb.auth ? fb.authExp || 0 : 0);
+  return { active: Date.now() < until, until, renews: !!fb.refresh, lastTest: fb.lastTest || null, diag: fb.diag || null };
 }
 
 async function fbToken() {
   let fb = await fbGet();
-  if (!fb.refresh) throw new Error('Sem sessao. Abra a Central da Fretebras (e faca login se pedir).');
-  if (Date.now() > fb.accessExp - 60e3) {
+  const authOk = fb.auth && Date.now() < fb.authExp - 60e3;
+  if (!fb.refresh) {
+    if (authOk) return fb; // so o cabecalho do site: vale ate vencer, sem renovar
+    throw new Error('Sem sessao. Abra a Central da Fretebras (e faca login se pedir).');
+  }
+  if (Date.now() > fb.accessExp - 60e3 && !authOk) {
     if (Date.now() > fb.refreshExp) throw new Error('Sessao vencida. Abra a Central e faca login de novo.');
     const r = await fetch(FB.sso, {
       method: 'POST',
@@ -53,7 +63,7 @@ async function fbToken() {
 async function fbApi(method, path, body) {
   const fb = await fbToken();
   // Primeiro o cabecalho que o proprio site usa; se a API recusar (401), tenta o token do SSO.
-  const auths = [...new Set([fb.auth, `Bearer ${fb.access}`].filter(Boolean))];
+  const auths = [...new Set([fb.auth && Date.now() < fb.authExp ? fb.auth : null, fb.access && `Bearer ${fb.access}`].filter(Boolean))];
   let r, text;
   for (const authorization of auths) {
     r = await fetch(FB.api + path, {

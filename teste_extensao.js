@@ -160,7 +160,11 @@ const SPA = `<!doctype html><title>Criar frete</title><body><main>
     assert.ok(big.ok, JSON.stringify(big));
     // Fretebras: pega a sessao quando a Central loga e publica pelo background (tudo falso, sem internet)
     const api = [];
-    await ctx.route('https://novacentral.fretebras.com.br/**', r => r.fulfill({ contentType: 'text/html', body: `<!doctype html><body>Central<script>
+    const jwt = exp => 'h.' + Buffer.from(JSON.stringify({ exp: Math.floor(exp / 1000) })).toString('base64url') + '.s';
+    const F5 = `<!doctype html><body>Central depois do F5<script>
+      localStorage.setItem('kc', JSON.stringify({ tokens: { access_token: '${jwt(Date.now() + 60e3)}', refresh_token: '${jwt(Date.now() + 20 * 864e5)}' } }));
+    </script></body>`;
+    await ctx.route('https://novacentral.fretebras.com.br/**', r => r.request().url().endsWith('/f5') ? r.fulfill({ contentType: 'text/html', body: F5 }) : r.fulfill({ contentType: 'text/html', body: `<!doctype html><body>Central<script>
       fetch('https://sso-external.fretebras.com.br/realms/companies/protocol/openid-connect/token', { method: 'POST', body: 'grant_type=authorization_code&code=x' })
         .then(() => { const x = new XMLHttpRequest(); x.open('GET', 'https://nca-gateway.fretebras.com.br/web/v1/home'); x.setRequestHeader('Authorization', 'Bearer APP1'); x.setRequestHeader('x-app', 'central'); x.send(); });
     </script></body>` }));
@@ -173,7 +177,7 @@ const SPA = `<!doctype html><title>Criar frete</title><body><main>
     await ctx.route('https://nca-gateway.fretebras.com.br/**', r => {
       const q = r.request(), h = q.headers(), u = new URL(q.url()).pathname, m = q.method();
       api.push(`${m} ${u} ${h.authorization} ${h['x-app']}`);
-      if (h.authorization !== 'Bearer APP1') return r.fulfill({ status: 401, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"error":"Unauthorized","status":401}' });
+      if (!['Bearer APP1', 'Bearer A2'].includes(h.authorization)) return r.fulfill({ status: 401, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"error":"Unauthorized","status":401}' });
       const body = u === '/web/v1/user/me' ? { data: { id_hashed: 'BwZE7', company: { id_hashed: 'xO48' } } }
         : u.endsWith('/duplicated') ? { isDuplicated: false, freight: [] }
         : m === 'POST' ? { data: { id: 'T1', freightCode: 'GOSP-TEST' } }
@@ -192,18 +196,33 @@ const SPA = `<!doctype html><title>Criar frete</title><body><main>
     assert.deepStrictEqual(await sw.evaluate(async () => Object.keys(await chrome.storage.local.get(null))), [], 'sessao nunca vai para o disco');
     const pub = await sw.evaluate(() => fbPublishTest());
     assert.deepStrictEqual(pub, { id: 'T1', code: 'GOSP-TEST' });
-    assert.ok(api.includes('refresh'), 'token de 30 s venceu e foi renovado');
     assert.ok(api.includes('POST /freight-management-bff/v1/freights Bearer APP1 central'), api.join('\n'));
     const sent = JSON.parse(api.find(a => a.startsWith('{"requestId"')));
     assert.ok(sent.requestId.startsWith('BwZE7-') && sent.freight.mainOwnerId === 'BwZE7' && sent.freight.productName === 'TESTE');
     assert.deepStrictEqual(await sw.evaluate(() => fbDeleteTest()), { deleted: 'GOSP-TEST' });
     assert.ok(api.includes('DELETE /freight-management-bff/v1/freights Bearer APP1 central'));
+    // cabecalho do site venceu (aba fechada ha tempo): renova pelo refresh token do SSO
+    await sw.evaluate(async () => { const { fb } = await chrome.storage.session.get('fb'); await chrome.storage.session.set({ fb: { ...fb, authExp: 0 } }); });
+    await sw.evaluate(() => fbApi('GET', '/web/v1/user/me'));
+    assert.ok(api.includes('refresh') && api.includes('GET /web/v1/user/me Bearer A2 central'), 'token de 30 s venceu e foi renovado');
     assert.deepStrictEqual(saved.diag, { names: ['authorization', 'x-app'], scheme: 'Bearer', sameAsSso: false, credentials: 'padrao (xhr)' });
     assert.ok(!JSON.stringify(saved.diag).includes('APP1'), 'diagnostico nao mostra o valor do login');
+    // F5 com login ja feito: sem chamada ao SSO, a sessao vem do que o site guardou no navegador
+    await sw.evaluate(() => chrome.storage.session.clear());
+    const f5 = await ctx.newPage();
+    await f5.goto('https://novacentral.fretebras.com.br/f5');   // grava o login no localStorage (como o site)
+    await f5.reload();                                           // F5: a extensao le o que esta guardado
+    await f5.waitForTimeout(500);
+    const st5 = await sw.evaluate(() => fbStatus());
+    assert.ok(st5.active && st5.renews && st5.until > Date.now() + 19 * 864e5, JSON.stringify(st5));
+    await f5.close();
+    await sw.evaluate(async () => { const { fb } = await chrome.storage.session.get('fb'); await chrome.storage.session.set({ fb: { ...fb, lastTest: null } }); });
+
     // outro site nao consegue mandar sessao falsa nem publicar
+    const antes = (await sw.evaluate(async () => (await chrome.storage.session.get('fb')).fb)).refresh;
     await app.evaluate(() => window.postMessage({ mspa: 'session', token: { access_token: 'X', refresh_token: 'X', expires_in: 1, refresh_expires_in: 1 } }, '*'));
     await app.waitForTimeout(300);
-    assert.strictEqual((await sw.evaluate(async () => (await chrome.storage.session.get('fb')).fb)).refresh, 'R1');
+    assert.strictEqual((await sw.evaluate(async () => (await chrome.storage.session.get('fb')).fb)).refresh, antes);
 
     console.log('OK: scan, React Fiber, rede (mascara), export, painel, gravador, export grande, sessao e publicacao Fretebras');
   } finally {

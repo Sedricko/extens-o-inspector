@@ -36,7 +36,7 @@ const bg = cmd => chrome.runtime.sendMessage({ cmd });
 const fbRefresh = async () => {
   const s = await bg('fb-status');
   fbLine.textContent = s.active
-    ? `Fretebras: sessao ativa ate ${new Date(s.until).toLocaleString('pt-BR')}` + (s.lastTest ? ` (teste ${s.lastTest.code} publicado)` : '')
+    ? `Fretebras: sessao ativa ate ${new Date(s.until).toLocaleString('pt-BR')}` + (s.renews ? '' : ' (sem renovacao automatica)') + (s.lastTest ? ` (teste ${s.lastTest.code} publicado)` : '')
     : 'Fretebras: sem sessao. Abra a Central da Fretebras para ativar.';
 };
 fbRefresh();

@@ -28,14 +28,31 @@
   const FB_API = /^https:\/\/nca-gateway\.fretebras\.com\.br\//;
   let headersSent = false, lastAuth = null, lastAccess = null;
   const session = data => FB_SITE && window.postMessage({ mspa: 'session', ...data }, location.origin);
-  const tokenFrom = text => {
-    try {
-      const t = JSON.parse(text);
-      if (!t.access_token || !t.refresh_token) return;
-      lastAccess = t.access_token;
-      session({ token: { access_token: t.access_token, refresh_token: t.refresh_token, expires_in: t.expires_in, refresh_expires_in: t.refresh_expires_in } });
-    } catch {}
+  const sendToken = t => {
+    lastAccess = t.access_token;
+    session({ token: { access_token: t.access_token, refresh_token: t.refresh_token, expires_in: t.expires_in, refresh_expires_in: t.refresh_expires_in } });
   };
+  const tokenFrom = text => {
+    try { const t = JSON.parse(text); if (t.access_token && t.refresh_token) sendToken(t); } catch {}
+  };
+  // No F5 o site reaproveita o login guardado e nao chama o SSO: procura o token onde o site guardou.
+  const findToken = (o, depth = 0) => {
+    if (!o || typeof o !== 'object' || depth > 3) return null;
+    if (typeof o.access_token === 'string' && typeof o.refresh_token === 'string') return o;
+    for (const v of Object.values(o)) { const t = findToken(v, depth + 1); if (t) return t; }
+    return null;
+  };
+  if (FB_SITE) for (const st of [localStorage, sessionStorage]) {
+    try {
+      for (let i = 0; i < st.length; i++) {
+        const v = st.getItem(st.key(i));
+        if (!v || !v.includes('refresh_token')) continue;
+        const t = findToken(JSON.parse(v));
+        if (t) { sendToken(t); break; }
+      }
+    } catch {}
+  }
+
   // Copia como o site se identifica na API: o cabecalho de login real (pode nao ser o token do SSO) e os demais.
   const headersFrom = (url, h, credentials) => {
     if (!FB_SITE || !FB_API.test(url)) return;
