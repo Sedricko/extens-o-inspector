@@ -115,6 +115,8 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
     let corpo = '';
     req.on('data', d => { corpo += d; });
     req.on('end', () => {
+      if (url.pathname === '/morto') return res.writeHead(404, { 'access-control-allow-origin': '*', 'content-type': 'text/html' }).end('<html>Desculpe, nao foi possivel abrir o arquivo.</html>');
+      if (url.pathname === '/login') return res.writeHead(200, { 'access-control-allow-origin': '*', 'content-type': 'text/html' }).end('<html><a href="https://accounts.google.com/ServiceLogin">Fazer login</a></html>');
       if (req.method === 'GET') {
         if (url.searchParams.get('token') !== 't') return res.writeHead(200, cors).end(JSON.stringify({ ok: false, erro: 'senha invalida' }));
         return res.writeHead(200, cors).end(JSON.stringify({ ok: true, linhas: linhasPlanilha.map((l, i) => ({ linha: i + 2, ...l })).filter(l => l.origem || l.status) }));
@@ -394,6 +396,10 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
     await sw.evaluate(async c => { await chrome.storage.local.remove(['lotePublicados', 'syncEstado', 'syncLogs']); await chrome.storage.local.set({ syncCfg: c }); FB.site = c.base; FB_TENTATIVAS = 6; }, { ...cfgSync, base });
     await new Promise(r => setTimeout(r, 300));
     assert.strictEqual((await sw.evaluate(() => chrome.alarms.get('sync-auto'))).periodInMinutes, 15, 'alarme criado com o automatico ligado');
+    const base404 = cfgSync.url.replace('/exec', '');
+    await assert.rejects(sw.evaluate(u => syncCfg().then(c => planilhaGet({ ...c, url: u })), base404 + '/morto'), /nao achou o aplicativo da web.*404/);
+    await assert.rejects(sw.evaluate(u => syncCfg().then(c => planilhaGet({ ...c, url: u })), base404 + '/login'), /pediu login.*Qualquer pessoa/);
+    await assert.rejects(sw.evaluate(() => syncCfg().then(c => planilhaGet({ ...c, token: 'errada' }))), /Planilha: senha invalida/);
     const { plano } = await sw.evaluate(() => syncPlano());
     assert.deepStrictEqual(plano.acoes.map(a => [a.linha, a.tipo, a.modo || '']), [[2, 'publicar', ''], [5, 'fechar', 'desativar'], [6, 'fechar', 'excluir']]);
     assert.deepStrictEqual(plano.escritas.map(e => [e.linha, e.status.slice(0, 40)]),

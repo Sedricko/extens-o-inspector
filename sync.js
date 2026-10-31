@@ -11,17 +11,26 @@ async function syncLog(txt, nivel = 'info') {
 const syncEstado = async () => (await chrome.storage.local.get('syncEstado')).syncEstado || {};
 const syncEstadoSet = async patch => { const e = { ...(await syncEstado()), ...patch }; await chrome.storage.local.set({ syncEstado: e }); return e; };
 
+// Chama o aplicativo da web e, se a resposta nao for do nosso script, explica o que o Google respondeu.
+async function planilhaChamar(url, init) {
+  const r = await fetch(url, init);
+  const txt = await r.text();
+  let j; try { j = JSON.parse(txt); } catch {}
+  if (j && typeof j.ok === 'boolean') return j;
+  if (/accounts\.google\.com|ServiceLogin/i.test(txt)) throw new Error('o Google pediu login: em Implantar > Gerenciar implantacoes, "Quem pode acessar" precisa ser "Qualquer pessoa"');
+  if (r.status === 404 || /nao foi possivel abrir|unable to open|n\u00e3o foi poss\u00edvel abrir/i.test(txt))
+    throw new Error('o Google nao achou o aplicativo da web nesse endereco (404). Use o "URL do app da Web" de uma implantacao ativa (termina em /exec) e confira se "Quem pode acessar" e "Qualquer pessoa"');
+  throw new Error(`resposta inesperada do Google (${r.status}): ${txt.replace(/\s+/g, ' ').slice(0, 80)}`);
+}
 async function planilhaGet(cfg) {
   if (!cfg.url || !cfg.token) throw new Error('Falta o endereco e a senha da planilha (pagina Sincronizar).');
-  const r = await fetch(`${cfg.url}${cfg.url.includes('?') ? '&' : '?'}token=${encodeURIComponent(cfg.token)}`);
-  const j = await r.json().catch(() => ({}));
-  if (!j.ok) throw new Error('Planilha: ' + (j.erro || 'resposta invalida (' + r.status + ')'));
+  const j = await planilhaChamar(`${cfg.url}${cfg.url.includes('?') ? '&' : '?'}token=${encodeURIComponent(cfg.token)}`);
+  if (!j.ok) throw new Error('Planilha: ' + (j.erro || 'resposta invalida'));
   return j.linhas;
 }
 async function planilhaPost(cfg, atualizacoes) {
-  const r = await fetch(cfg.url, { method: 'POST', headers: { 'content-type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ token: cfg.token, atualizacoes }) });
-  const j = await r.json().catch(() => ({}));
-  if (!j.ok) throw new Error('Planilha: ' + (j.erro || 'resposta invalida (' + r.status + ')'));
+  const j = await planilhaChamar(cfg.url, { method: 'POST', headers: { 'content-type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ token: cfg.token, atualizacoes }) });
+  if (!j.ok) throw new Error('Planilha: ' + (j.erro || 'resposta invalida'));
   return j;
 }
 
