@@ -324,7 +324,19 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
     const fill = await sw.evaluate(b => fbFillTest(b), base);
     assert.ok(fill.ok, JSON.stringify(fill));
     const form = ctx.pages().find(p => p.url() === base + 'meus-fretes/cadastrar');
-    const log = await form.evaluate(() => window.log);
+    // preencher DE NOVO a mesma pagina (cidades ja escolhidas): nao pode falhar nem escolher outra vez
+    const antesLog = await form.evaluate(() => window.log.length);
+    const de_novo = await sw.evaluate(async () => { // acha a aba do formulario pelo que ela responde (a extensao de teste nao ve enderecos locais)
+      for (const t of await chrome.tabs.query({})) {
+        const r = await chrome.tabs.sendMessage(t.id, { cmd: 'fill-ready' }).catch(() => null);
+        if (r && r.ready) return chrome.tabs.sendMessage(t.id, { cmd: 'fill', arg: linhaParaPassos(LINHA_PADRAO).passos });
+      }
+      return { ok: false, error: 'nao achei a aba do formulario' };
+    });
+    assert.ok(de_novo.ok, 'segunda passada na mesma pagina: ' + JSON.stringify(de_novo));
+    const logTudo = await form.evaluate(() => window.log);
+    assert.ok(!logTudo.slice(antesLog).some(x => /^c[12]=/.test(x)), 'nao escolheu as cidades outra vez');
+    const log = logTudo.slice(0, antesLog); // o resto das verificacoes e da primeira passada
     assert.deepStrictEqual(log.filter(x => x !== 'LS'), ['c1=Extrema - MG', 'c2=Frutal - MG', 'tipo=Carga Geral', 'esp=Pallet', 'Carreta']);
     assert.ok(!log.includes('PUBLICOU') && !log.includes('LS'), 'nao publica e nao mexe em outro veiculo');
     assert.strictEqual(await form.inputValue('#prod'), 'MATERIAL DE EMBALAGEM - PALLET', 'o padrao ja cabe em 30 caracteres');

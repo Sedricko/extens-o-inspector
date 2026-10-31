@@ -161,6 +161,7 @@ async function fbFillTest(base = FB.site, publish = false, row = null) { // base
   let last;
   // Abrir o endereco direto passa pelo login da Fretebras e a pagina recarrega: se isso cortar a conversa, tenta de novo.
   for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt > 0) { await chrome.tabs.reload(tab.id).catch(() => {}); await new Promise(r => setTimeout(r, 2500)); } // outra tentativa comeca com a pagina limpa
     let ready = false;
     for (let i = 0; i < FB_TENTATIVAS && !ready; i++) { // espera o formulario aparecer
       ready = !!((await ask('fill-ready').catch(() => null)) || {}).ready;

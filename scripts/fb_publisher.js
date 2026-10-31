@@ -60,6 +60,8 @@
     // Digita e, se tiver "pick", escolhe a opcao da lista que aparece (cidades vem de uma busca)
     async text(s) {
       const el = await waitFor(() => inputOf(s.label, s.tag), `o campo "${s.label}"`);
+      if (s.pick && norm(el.value) === norm(s.pick)) return; // cidade ja escolhida (outra tentativa ou o proprio site): o site nao reabre a lista
+      if (s.pick && el.value) { setValue(el, ''); await sleep(500); } // apaga a escolha anterior antes de digitar a nova
       const max = s.max || (el.maxLength > 0 ? el.maxLength : 0); // o site limita o tamanho (produto: 30)
       const value = max && s.value.length > max ? s.value.slice(0, max) : s.value;
       if (value !== s.value) notes.push(`"${s.label}" aceita ${max} caracteres: ficou "${value}"`);
