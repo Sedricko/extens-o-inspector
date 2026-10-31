@@ -20,7 +20,7 @@ form{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1
 input,select{font:inherit;padding:7px;border-radius:6px;border:1px solid var(--bd);background:var(--bg);color:var(--tx)}label.c{flex-direction:row;align-items:center;gap:8px;color:var(--tx);font-size:13px}
 .aviso{background:#fff7e6;color:#7a4b00;border:1px solid #f5d28a;border-radius:8px;padding:10px;margin-bottom:12px}@media(prefers-color-scheme:dark){.aviso{background:#3a2d10;color:#fbd38d;border-color:#6b4f12}}
 </style><main>
-<h1>Bot de Fretes</h1>
+<h1>Bot de Fretes <span id="versao" class="mut" style="font-size:12px;font-weight:400"></span></h1>
 <div class="card"><div class="top"><span class="dot" id="dot"></span><div><div class="big" id="fase">...</div><div class="mut" id="motivo"></div></div>
 <div class="fila"><b id="fila">0</b><span class="mut">na fila</span></div></div>
 <div class="btns"><button class="p" id="agora">Sincronizar agora</button><button id="pausa">Pausar</button><button id="retoma" hidden class="p">Retomar</button>
@@ -48,6 +48,7 @@ const TXT={rodando:'Rodando',pausado:'Pausado',login:'Aguardando login na Centra
 let preenchido=false;
 async function atualiza(){
   let s;try{s=await api('estado')}catch{$('fase').textContent='Programa fechado';return}
+  $('versao').textContent=s.versao?'v'+s.versao:'';
   const e=s.estado;$('fase').textContent=TXT[e.fase]||e.fase;$('motivo').textContent=e.motivo||'';$('fila').textContent=e.fila||0;
   $('dot').style.background='var('+(COR[e.fase]||'--mut')+')';
   $('avisoCfg').hidden=e.fase!=='configurar';$('retoma').hidden=!e.erroPausa;$('pausa').hidden=!!e.erroPausa||e.fase==='gravando';

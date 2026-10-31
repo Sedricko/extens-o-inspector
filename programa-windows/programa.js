@@ -8,6 +8,7 @@ const gravar = require('./gravar');
 const { avisar } = require('./avisos');
 
 const SITE = 'https://novacentral.fretebras.com.br/';
+const VERSAO = require('./package.json').version;
 const pasta = process.env.BOT_PASTA || __dirname; // o teste usa outra pasta
 const arqCfg = path.join(pasta, 'config.json'), arqLog = path.join(pasta, 'bot.log');
 const PADRAO = { fechar: 'excluir', minutos: 15, limite: 50, pausaSeg: 10, abas: 1, conferirZero: true, apagarTudo: true, usuario: '', senhaFretebras: '', url: '', token: '' };
@@ -143,7 +144,7 @@ async function salvarCfg(b) {
     estado: async () => {
       const dados = (app && app.dados) || (fs.existsSync(path.join(pasta, 'dados.json')) ? JSON.parse(fs.readFileSync(path.join(pasta, 'dados.json'), 'utf8')) : {});
       const { token, senhaFretebras, ...visivel } = cfg;
-      return { estado: { ...estado, fila: dados.syncFila || 0 }, cfg: visivel, historico: (dados.syncHistorico || []).slice(0, 100), logs };
+      return { estado: { ...estado, fila: dados.syncFila || 0 }, cfg: visivel, historico: (dados.syncHistorico || []).slice(0, 100), logs, versao: VERSAO };
     },
     aoSalvar: salvarCfg, aoAcao: acao,
   });
