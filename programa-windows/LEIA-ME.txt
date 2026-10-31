@@ -11,3 +11,9 @@ BOT DE FRETES PARA WINDOWS 11 (programa proprio, sem extensao)
 Ajustes (config.json, abra no Bloco de Notas): minutos (de quanto em quanto tempo), limite (ate 50 por rodada),
 abas (1 a 5 ao mesmo tempo), fechar ("desativar" ou "excluir"), conferirZero.
 Nao compartilhe esta pasta: ela guarda sua sessao e a senha da planilha.
+
+GRAVAR TUDO (para me mandar o relatorio)
+- Dois cliques em Gravar.bat. Abre o navegador do bot e grava tudo que voce fizer (cliques, campos, telas, mensagens, chamadas do site).
+- Senhas e tokens nao sao gravados. Faca o que combinamos (entrar, filtrar seus fretes, apagar 1 ou 2 de teste).
+- Quando terminar, volte na janela preta e aperte ENTER. Ele cria relatorio-....txt e relatorio-....json na pasta. Mande os dois.
+- Nao use Gravar.bat e Iniciar.bat ao mesmo tempo (usam o mesmo perfil).
