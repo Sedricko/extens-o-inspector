@@ -1,0 +1,9 @@
+BOT DE FRETES PARA WINDOWS 11
+
+1) Dê dois cliques em Instalar.bat (so na primeira vez). Se pedir, feche e rode de novo.
+2) Dê dois cliques em Iniciar.bat. Abre um navegador so do bot, com a extensao.
+3) Na primeira vez, entre na Central. A sessao fica salva na pasta "perfil".
+4) No painel "Sincronizar" cole o link da planilha e a senha, ligue "Sincronizar sozinha".
+5) Deixe a janela aberta (pode minimizar). Feche para parar.
+
+Nao use o perfil "perfil" para outra coisa. Nao compartilhe esta pasta: ela guarda sua sessao.
