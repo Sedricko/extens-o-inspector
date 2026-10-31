@@ -25,7 +25,7 @@
  * Autoresponder, e so para nao manter publicada uma carga que ja tem motorista) e coleta nao vencida (24 h).
  * Da aba Mot so le idCarga e Situacao. A extensao so enxerga a aba FRETES.
  */
-const FR_ID = 'COLE_AQUI_O_ID_DA_PLANILHA';   // planilha onde fica a aba FRETES (a que a extensao le e escreve)
+const FR_ID = '1g4CWwRdXN1GQBPbPZ-bMMvm__w-qcwyDnqLrrGZ3cFQ';   // planilha onde fica a aba FRETES (a que a extensao le e escreve)
 const FR_ID_BASE = '';                        // planilha onde ficam as abas Base e Mot; vazio = a mesma do FR_ID
 const FR_ABA = 'FRETES';
 const FR_COLUNAS = ['ORIGEM', 'DESTINO', 'PRODUTO', 'VALOR', 'PESO', 'PALETES', 'VEÍCULO', 'CARROCERIA', 'RASTREADA', 'LONA', 'PAGAMENTO', 'OBSERVAÇÕES', 'STATUS', 'CÓDIGO', 'IDCARGA', 'PUBLICADO EM'];
