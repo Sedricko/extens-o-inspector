@@ -51,7 +51,10 @@ const ctx = vm.createContext({
   ScriptApp: { getProjectTriggers: () => triggers, deleteTrigger: t => triggers.splice(triggers.indexOf(t), 1),
     newTrigger: fn => ({ timeBased: () => { const c = { create: () => triggers.push({ getHandlerFunction: () => fn }) }; return { everyMinutes: () => c, everyHours: () => c }; } }) },
 });
-const fonte = fs.readFileSync(`${__dirname}/planilha/fretes-tudo.gs`, 'utf8');
+// normaliza: o arquivo entregue pode vir com um FR_ID de verdade ja preenchido (para o usuario so colar); o teste
+// sempre parte do marcador, para nao depender disso.
+const fonte = fs.readFileSync(`${__dirname}/planilha/fretes-tudo.gs`, 'utf8')
+  .replace(/^const FR_ID = '[^']*';/m, "const FR_ID = 'COLE_AQUI_O_ID_DA_PLANILHA';");
 const carregar = t => vm.runInContext(t.replace(/^const /gm, 'var '), ctx);
 const run = c => { const r = vm.runInContext(c, ctx); return r && typeof r === 'object' ? JSON.parse(JSON.stringify(r)) : r; }; // copia para fora do simulador
 const get = t => JSON.parse(vm.runInContext('doGet', ctx)({ parameter: { token: t } }));
