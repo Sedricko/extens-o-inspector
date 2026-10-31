@@ -29,3 +29,26 @@ document.getElementById('rec').onclick = async () => {
   const r = await send('rec');
   show(r.error || (r.on ? 'Gravando. Use o site e clique em "Parar e salvar" na barra vermelha.' : 'Gravacao salva em Downloads/master-spa.'));
 };
+
+// Fretebras (background, funciona com a aba fechada)
+const fbLine = document.getElementById('fb');
+const bg = cmd => chrome.runtime.sendMessage({ cmd });
+const fbRefresh = async () => {
+  const s = await bg('fb-status');
+  fbLine.textContent = s.active
+    ? `Fretebras: sessao ativa ate ${new Date(s.until).toLocaleString('pt-BR')}` + (s.lastTest ? ` (teste ${s.lastTest.code} publicado)` : '')
+    : 'Fretebras: sem sessao. Abra a Central da Fretebras para ativar.';
+};
+fbRefresh();
+document.getElementById('fbtest').onclick = async () => {
+  if (!confirm('Vai PUBLICAR DE VERDADE 1 frete de teste (Goiania-GO -> Sao Paulo-SP, produto TESTE). Depois exclua com o outro botao. Continuar?')) return;
+  show('Publicando...');
+  const r = await bg('fb-test');
+  show(r.error || `Publicado: ${r.code}. Confira em Meus Fretes e depois clique em Excluir frete de teste.`);
+  fbRefresh();
+};
+document.getElementById('fbdel').onclick = async () => {
+  const r = await bg('fb-delete');
+  show(r.error || `Excluido: ${r.deleted}.`);
+  fbRefresh();
+};

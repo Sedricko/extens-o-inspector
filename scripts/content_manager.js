@@ -10,6 +10,7 @@ window.addEventListener('message', ev => {
   // Gravacao: cada passo vai direto para o armazenamento da extensao (nao se perde se a pagina recarregar)
   if (d.mspa === 'rec-step' && d.step && d.step.recId) return void chrome.storage.local.set({ [`rec:${d.step.recId}:${d.step.t}:${Math.random()}`]: d.step });
   if (d.mspa === 'rec-stop' && d.recId) return void save(d.recId, true);
+  if (d.mspa === 'session' && location.hostname === 'novacentral.fretebras.com.br') return void chrome.runtime.sendMessage({ cmd: 'fb-session', token: d.token, headers: d.headers });
   if (d.mspa !== 'res' || !pending.has(d.id)) return;
   pending.get(d.id)(d.res);
   pending.delete(d.id);

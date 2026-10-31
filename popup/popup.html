@@ -5,6 +5,8 @@
 <style>
   body { font: 13px system-ui, sans-serif; width: 230px; margin: 10px; }
   button { display: block; width: 100%; margin: 0 0 6px; padding: 7px; cursor: pointer; }
+  hr { margin: 8px 0; }
+  #fb { margin: 0 0 6px; }
   #out { margin: 6px 0 0; min-height: 1.2em; color: #333; word-break: break-word; }
 </style>
 </head>
@@ -14,6 +16,10 @@
   <button id="export">Export JSON</button>
   <button id="panel">Painel de acoes (Fase 2)</button>
   <button id="rec">Gravar o que eu fizer (liga/desliga)</button>
+  <hr>
+  <p id="fb">Fretebras: verificando sessao...</p>
+  <button id="fbtest">Publicar 1 frete de teste</button>
+  <button id="fbdel">Excluir frete de teste</button>
   <p id="out" role="status"></p>
   <script src="popup.js"></script>
 </body>

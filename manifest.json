@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Master SPA",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Mapeia o DOM (com componentes React) e as chamadas fetch/XHR de uma SPA, exporta JSON e abre um painel de acoes.",
   "permissions": [
     "scripting",
@@ -55,5 +55,9 @@
       "run_at": "document_idle",
       "world": "MAIN"
     }
+  ],
+  "host_permissions": [
+    "https://nca-gateway.fretebras.com.br/*",
+    "https://sso-external.fretebras.com.br/*"
   ]
 }

@@ -1,8 +1,11 @@
+importScripts('fretebras.js');
+
 // Junta os passos gravados (um por chave no storage) numa linha do tempo; "final" apaga depois de juntar.
 async function recording(id, final) {
   const all = await chrome.storage.local.get(null);
   const keys = Object.keys(all).filter(k => k.startsWith(`rec:${id}:`));
-  const steps = keys.map(k => all[k]).sort((a, b) => a.t - b.t);
+  // mesmo milissegundo: a acao do usuario vem antes da chamada que ela dispara
+  const steps = keys.map(k => all[k]).sort((a, b) => a.t - b.t || (a.type === 'request') - (b.type === 'request'));
   // Digitar manda um passo por tecla: fica so o ultimo valor de cada sequencia no mesmo campo
   // (o que aparece na tela no meio, como "3/30 caracteres", nao quebra a sequencia; clique e chamada de rede quebram).
   const typing = (s, i) => {
@@ -39,3 +42,19 @@ function download(msg, reply) {
   chrome.downloads.download({ url, filename, saveAs: false }, id =>
     reply(chrome.runtime.lastError ? { error: chrome.runtime.lastError.message } : { ok: true, id, filename }));
 }
+
+// Fretebras: a sessao so e aceita vinda da Central; publicar/excluir so do popup (sem aba), nunca de um site.
+chrome.runtime.onMessage.addListener((msg, sender, reply) => {
+  if (sender.id !== chrome.runtime.id || !/^fb-/.test(msg.cmd)) return;
+  const fromSite = sender.tab && sender.url && sender.url.startsWith(FB.site);
+  const fromPopup = !sender.tab;
+  const run = {
+    'fb-session': fromSite && (() => fbSaveSession(msg)),
+    'fb-status': fromPopup && fbStatus,
+    'fb-test': fromPopup && fbPublishTest,
+    'fb-delete': fromPopup && fbDeleteTest,
+  }[msg.cmd];
+  if (!run) return;
+  run().then(r => reply(r || { ok: true }), e => reply({ error: String(e.message || e) }));
+  return true;
+});

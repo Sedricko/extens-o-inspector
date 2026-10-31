@@ -24,3 +24,12 @@ tokens e codigo do login (code, code_verifier) em JSON e form; nao guarda cabeca
 Limites: nao entra em iframes nem em shadow roots da pagina.
 
 Teste (sem internet): node teste_extensao.js
+
+Fretebras (sessao e publicacao em segundo plano)
+- Abra a Central da Fretebras normalmente (faca login se pedir). A extensao guarda a sessao so na memoria do
+  navegador (some ao fechar o Chrome; nunca vai para disco nem para o JSON). O popup mostra "sessao ativa ate ...".
+- Com a sessao ativa, a extensao chama a API da Fretebras pelo background: funciona com a aba fechada,
+  sem nada na tela, enquanto o Chrome estiver aberto. Renova o token sozinha (a sessao do SSO dura ~28 dias).
+- "Publicar 1 frete de teste": publica DE VERDADE Goiania-GO -> Sao Paulo-SP, produto TESTE. Depois use
+  "Excluir frete de teste". Serve para confirmar que a publicacao pela extensao funciona.
+- Publicar/excluir so pode ser pedido pelo popup; a sessao so e aceita vinda de novacentral.fretebras.com.br.

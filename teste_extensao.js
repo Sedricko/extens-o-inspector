@@ -3,6 +3,7 @@
 const assert = require('assert');
 const http = require('http');
 const os = require('os'), fs = require('fs'), path = require('path');
+process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = '1'; // deixa o teste interceptar as chamadas do background
 const { chromium } = require('playwright');
 
 const PAGE = `<!doctype html><title>SPA teste</title><body>
@@ -157,7 +158,51 @@ const SPA = `<!doctype html><title>Criar frete</title><body><main>
     await app.evaluate(() => { for (let i = 0; i < 400; i++) window.__MSPA_NET.push({ url: 'x', resBody: 'x'.repeat(20000) }); });
     const big = await sw.evaluate(async () => { const [tab] = await chrome.tabs.query({ active: true }); return chrome.tabs.sendMessage(tab.id, { cmd: 'export' }); });
     assert.ok(big.ok, JSON.stringify(big));
-    console.log('OK: scan, React Fiber, rede (mascara), export, painel, gravador, export grande');
+    // Fretebras: pega a sessao quando a Central loga e publica pelo background (tudo falso, sem internet)
+    const api = [];
+    await ctx.route('https://novacentral.fretebras.com.br/**', r => r.fulfill({ contentType: 'text/html', body: `<!doctype html><body>Central<script>
+      fetch('https://sso-external.fretebras.com.br/realms/companies/protocol/openid-connect/token', { method: 'POST', body: 'grant_type=authorization_code&code=x' })
+        .then(() => { const x = new XMLHttpRequest(); x.open('GET', 'https://nca-gateway.fretebras.com.br/web/v1/home'); x.setRequestHeader('Authorization', 'Bearer A1'); x.setRequestHeader('x-app', 'central'); x.send(); });
+    </script></body>` }));
+    await ctx.route('https://sso-external.fretebras.com.br/**', r => {
+      const refresh = (r.request().postData() || '').includes('grant_type=refresh_token');
+      api.push(refresh ? 'refresh' : 'login');
+      r.fulfill({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+        body: JSON.stringify(refresh ? { access_token: 'A2', expires_in: 3600 } : { access_token: 'A1', refresh_token: 'R1', expires_in: 30, refresh_expires_in: 2447186 }) });
+    });
+    await ctx.route('https://nca-gateway.fretebras.com.br/**', r => {
+      const q = r.request(), h = q.headers(), u = new URL(q.url()).pathname, m = q.method();
+      api.push(`${m} ${u} ${h.authorization} ${h['x-app']}`);
+      const body = u === '/web/v1/user/me' ? { data: { id_hashed: 'BwZE7', company: { id_hashed: 'xO48' } } }
+        : u.endsWith('/duplicated') ? { isDuplicated: false, freight: [] }
+        : m === 'POST' ? { data: { id: 'T1', freightCode: 'GOSP-TEST' } }
+        : m === 'DELETE' ? { data: { errors: [], success: ['T1'] } } : { data: {} };
+      if (m === 'POST' && !u.endsWith('/duplicated')) api.push(q.postData());
+      r.fulfill({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
+    });
+    const central = await ctx.newPage();
+    await central.goto('https://novacentral.fretebras.com.br/meus-fretes');
+    await central.waitForTimeout(800);
+    await central.close(); // daqui em diante sem aba da Fretebras
+    const st = await sw.evaluate(() => fbStatus());
+    assert.ok(st.active && st.until > Date.now() + 27 * 864e5, JSON.stringify(st));
+    const saved = await sw.evaluate(async () => (await chrome.storage.session.get('fb')).fb);
+    assert.deepStrictEqual([saved.refresh, saved.headers], ['R1', { 'x-app': 'central' }]);
+    assert.deepStrictEqual(await sw.evaluate(async () => Object.keys(await chrome.storage.local.get(null))), [], 'sessao nunca vai para o disco');
+    const pub = await sw.evaluate(() => fbPublishTest());
+    assert.deepStrictEqual(pub, { id: 'T1', code: 'GOSP-TEST' });
+    assert.ok(api.includes('refresh'), 'token de 30 s venceu e foi renovado');
+    assert.ok(api.includes('POST /freight-management-bff/v1/freights Bearer A2 central'), api.join('\n'));
+    const sent = JSON.parse(api.find(a => a.startsWith('{"requestId"')));
+    assert.ok(sent.requestId.startsWith('BwZE7-') && sent.freight.mainOwnerId === 'BwZE7' && sent.freight.productName === 'TESTE');
+    assert.deepStrictEqual(await sw.evaluate(() => fbDeleteTest()), { deleted: 'GOSP-TEST' });
+    assert.ok(api.includes('DELETE /freight-management-bff/v1/freights Bearer A2 central'));
+    // outro site nao consegue mandar sessao falsa nem publicar
+    await app.evaluate(() => window.postMessage({ mspa: 'session', token: { access_token: 'X', refresh_token: 'X', expires_in: 1, refresh_expires_in: 1 } }, '*'));
+    await app.waitForTimeout(300);
+    assert.strictEqual((await sw.evaluate(async () => (await chrome.storage.session.get('fb')).fb)).refresh, 'R1');
+
+    console.log('OK: scan, React Fiber, rede (mascara), export, painel, gravador, export grande, sessao e publicacao Fretebras');
   } finally {
     await ctx.close(); server.close();
   }
