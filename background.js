@@ -8,7 +8,7 @@ async function recording(id, final) {
   const typing = (s, i) => {
     if (s.type !== 'field') return false;
     for (const n of steps.slice(i + 1)) {
-      if (n.type === 'field') return n.selector === s.selector;
+      if (n.type === 'field') return n.name === s.name && n.route === s.route; // id do campo muda a cada tecla em alguns sites
       if (n.type !== 'appeared' && n.type !== 'storage') return false;
     }
     return false;

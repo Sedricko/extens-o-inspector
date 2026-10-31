@@ -14,7 +14,10 @@
   };
   const cut = t => (t.length > BODY ? t.slice(0, BODY) + '…' : t);
   // shortcut: mascara so senha/token/codigo de login em JSON e form-urlencoded; corpo em outro formato sai como esta.
-  const mask = t => cut(t).replace(/(^|[?&"{,\s])((?:password|passwd|senha|secret|authorization|code|code_verifier|\w*token\w*)"?\s*[:=]\s*)("[^"]*"|[^&,}\s]*)/gi, '$1$2"***"');
+  // "code" so no formato de formulario (login OAuth): em JSON "code" e o codigo do frete e precisa aparecer.
+  const mask = t => cut(t)
+    .replace(/(^|[?&"{,\s])((?:password|passwd|senha|secret|authorization|code_verifier|\w*token\w*)"?\s*[:=]\s*)("[^"]*"|[^&,}\s]*)/gi, '$1$2"***"')
+    .replace(/(^|[?&])(code=)[^&\s]*/g, '$1$2***');
   const textual = ct => /json|text\/|xml|javascript|graphql/i.test(ct || '');
   const abs = u => { try { return new URL(u, location.href).href; } catch { return String(u); } };
 

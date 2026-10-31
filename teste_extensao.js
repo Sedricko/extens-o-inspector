@@ -20,16 +20,16 @@ const PAGE = `<!doctype html><title>SPA teste</title><body>
 
 // Mini SPA de "criar frete": campos, select, botao que publica (POST), toast, mudanca de tela e localStorage.
 const SPA = `<!doctype html><title>Criar frete</title><body><main>
-<label for="orig">Origem</label><input id="orig">
+<label>Origem<input id="orig"></label>
 <div><label>Peso (ton)</label><div><input id="peso" type="number"></div></div>
 <select id="veic" aria-label="Veiculo"><option value="">-</option><option value="2">Carreta</option></select>
 <label><input id="rast" type="checkbox"> Rastreador</label>
 <input id="pw" type="password" placeholder="Senha">
 <button id="criar">Criar frete</button></main>
 <script>
-  orig.addEventListener('input', () => sessionStorage.setItem('sentryReplaySession', Date.now())); // ruido entre as teclas
+  const origEl = orig; origEl.addEventListener('input', () => { sessionStorage.setItem('sentryReplaySession', Date.now()); origEl.id = 'input-' + Math.random().toString(36).slice(2); }); // ruido e id novo a cada tecla, como na Fretebras
   document.getElementById('criar').onclick = async () => {
-    const body = { origem: orig.value, peso: +peso.value, veiculo: veic.value };
+    const body = { origem: origEl.value, peso: +peso.value, veiculo: veic.value };
     const r = await (await fetch('/api/frete', { method: 'POST', body: JSON.stringify(body) })).json();
     localStorage.setItem('ultimoFrete', r.id);
     history.pushState(null, '', '/app/criado');
@@ -103,11 +103,11 @@ const SPA = `<!doctype html><title>Criar frete</title><body><main>
     // Mascara codigo e tokens do login, sem pegar campos como freightCode/zipcode
     const masked = await page.evaluate(async () => {
       await fetch('/api/t', { method: 'POST', body: 'grant_type=x&code=SEGREDO1&code_verifier=SEGREDO2' });
-      await fetch('/api/t', { method: 'POST', body: JSON.stringify({ tokenFCM: 'SEGREDO3', freightCode: 'SPMG-1', zipcode: '123' }) });
+      await fetch('/api/t', { method: 'POST', body: JSON.stringify({ tokenFCM: 'SEGREDO3', freightCode: 'SPMG-1', code: 'SPGO-1770', zipcode: '123' }) });
       await new Promise(r => setTimeout(r, 200)); // a chamada entra no log depois de ler a resposta
       return window.__MSPA_NET.filter(n => n.url.endsWith('/api/t')).map(n => n.reqBody).join(' ');
     });
-    assert.ok(!/SEGREDO/.test(masked) && masked.includes('SPMG-1') && masked.includes('"123"'), masked);
+    assert.ok(!/SEGREDO/.test(masked) && masked.includes('SPMG-1') && masked.includes('SPGO-1770') && masked.includes('"123"'), masked);
 
     // Fase 3: gravador do que o usuario faz, sobrevivendo a recarga da pagina
     const app = await ctx.newPage();
@@ -116,7 +116,7 @@ const SPA = `<!doctype html><title>Criar frete</title><body><main>
     await app.waitForFunction(() => window.__MSPA_RECORDER);
     await app.bringToFront();
     assert.deepStrictEqual(await send('rec'), { on: true });
-    await app.locator('#orig').pressSequentially('Jacarei');
+    await app.locator('input').first().pressSequentially('Jacarei');
     await app.fill('#peso', '25');
     await app.selectOption('#veic', '2');
     await app.check('#rast');
