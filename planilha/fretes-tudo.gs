@@ -385,3 +385,22 @@ function ativarImportacaoAutomatica() {
 function desativarImportacaoAutomatica() {
   ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'importarDaBase').forEach(t => ScriptApp.deleteTrigger(t));
 }
+
+// Importa na hora quando voce edita a aba Base (alem do gatilho de 10 em 10 min, que fica de reforco).
+// So sente edicao feita por uma pessoa na tela; se a Base for preenchida por outro script/API, isso nao dispara.
+function frAoEditar(e) {
+  if (!e || !e.range || e.range.getSheet().getName() !== 'Base') return;
+  const prop = PropertiesService.getScriptProperties();
+  const agora = Date.now(), ultimo = Number(prop.getProperty('FR_ULTIMA_IMPORT_INSTANTANEA') || 0);
+  if (agora - ultimo < 15000) return; // colar varias linhas de uma vez dispara varios eventos: so roda 1x a cada 15s
+  prop.setProperty('FR_ULTIMA_IMPORT_INSTANTANEA', String(agora));
+  importarDaBase();
+}
+function ativarImportacaoInstantanea() {
+  desativarImportacaoInstantanea();
+  ScriptApp.newTrigger('frAoEditar').forSpreadsheet(frPlanilhaBase_()).onEdit().create();
+  Logger.log('Pronto: editar a aba Base agora importa na hora, alem do gatilho de 10 em 10 min.');
+}
+function desativarImportacaoInstantanea() {
+  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'frAoEditar').forEach(t => ScriptApp.deleteTrigger(t));
+}
