@@ -4,6 +4,7 @@
  *
  * Como usar:
  *  1) Troque FR_ID pelo ID da planilha (o trecho entre /d/ e /edit no endereco dela).
+ *     Se a Base e a Mot ficam em OUTRA planilha, coloque o ID dela em FR_ID_BASE (em branco = a mesma planilha).
  *  2) Rode "prepararTudo" (aceite as permissoes): confere o acesso, prepara a aba FRETES, gera a senha e importa as cargas ativas.
  *  3) Implantar > Nova implantacao > App da Web > Executar como: Eu > Qualquer pessoa. Depois de mudar o codigo:
  *     Implantar > Gerenciar implantacoes > lapis > Nova versao (o endereco continua o mesmo).
@@ -17,7 +18,8 @@
  * nao fechada (aba Mot com Situacao FECHADO, ou fx_StatusCarga EM PROCESSO) e coleta nao vencida (24 h).
  * Da aba Mot so le idCarga e Situacao. A extensao so enxerga a aba FRETES.
  */
-const FR_ID = 'COLE_AQUI_O_ID_DA_PLANILHA';
+const FR_ID = 'COLE_AQUI_O_ID_DA_PLANILHA';   // planilha onde fica a aba FRETES (a que a extensao le e escreve)
+const FR_ID_BASE = '';                        // planilha onde ficam as abas Base e Mot; vazio = a mesma do FR_ID
 const FR_ABA = 'FRETES';
 const FR_COLUNAS = ['ORIGEM', 'DESTINO', 'PRODUTO', 'VALOR', 'PESO', 'PALETES', 'VEÍCULO', 'CARROCERIA', 'RASTREADA', 'LONA', 'PAGAMENTO', 'OBSERVAÇÕES', 'STATUS', 'CÓDIGO', 'IDCARGA'];
 const FR_LINHAS_ATE = 500;
@@ -35,6 +37,10 @@ function frPlanilha_() {
   if (FR_ID.indexOf('COLE_AQUI') === 0) throw new Error('troque FR_ID pelo ID da planilha');
   return SpreadsheetApp.openById(FR_ID);
 }
+// Planilha de onde se le a Base e a Mot (a mesma da FRETES, a menos que FR_ID_BASE esteja preenchido).
+function frPlanilhaBase_() {
+  return FR_ID_BASE ? SpreadsheetApp.openById(FR_ID_BASE) : frPlanilha_();
+}
 function frAba_() {
   const aba = frPlanilha_().getSheetByName(FR_ABA);
   if (!aba) throw new Error('a planilha nao tem a aba ' + FR_ABA + ' (rode prepararTudo)');
@@ -44,6 +50,8 @@ function frAba_() {
 // ===================== Preparacao =====================
 function testarAcesso() {
   Logger.log('Aba %s encontrada: %s linha(s) com dados.', FR_ABA, frAba_().getLastRow());
+  const base = frPlanilhaBase_().getSheetByName(FR_IMP.BASE);
+  Logger.log(base ? 'Aba %s encontrada: %s linha(s).' : 'ATENCAO: a aba %s nao existe na planilha da Base.', FR_IMP.BASE, base ? base.getLastRow() : '');
 }
 
 function configurarAbaFretes() {
@@ -266,9 +274,8 @@ function importarDaBase() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) return { ocupado: true };
   try {
-    const ss = frPlanilha_();
     const fretes = frAba_();
-    const cargas = frLerBase_(ss);
+    const cargas = frLerBase_(frPlanilhaBase_());
     if (!Object.keys(cargas).length) throw new Error('a aba Base nao tem cargas: nada foi alterado');
 
     let cab = fretes.getRange(1, 1, 1, fretes.getLastColumn()).getValues()[0];

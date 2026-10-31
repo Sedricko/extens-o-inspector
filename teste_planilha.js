@@ -22,8 +22,8 @@ const sheets = {
 const props = {}, triggers = [], logs = [];
 const chain = () => new Proxy(function () {}, { get: (t, p) => (p === 'then' ? undefined : chain()), apply: () => chain() }); // formatacao: aceita qualquer chamada
 const comFallback = o => new Proxy(o, { get: (t, p) => (p in t ? t[p] : chain()) });
-const sheet = nome => {
-  const d = sheets[nome];
+const sheet = (store, nome) => {
+  const d = store[nome];
   return comFallback({
     getName: () => nome,
     getDataRange: () => ({ getValues: () => d.map(r => r.slice()) }),
@@ -37,14 +37,15 @@ const sheet = nome => {
     }),
   });
 };
-const planilha = { getSheetByName: n => (sheets[n] ? sheet(n) : null), insertSheet: n => { sheets[n] = []; return sheet(n); } };
+const mkPlanilha = store => ({ getSheetByName: n => (store[n] ? sheet(store, n) : null), insertSheet: n => { store[n] = []; return sheet(store, n); } });
+const planilha = mkPlanilha(sheets), storeBase = {}, planilhaBase = mkPlanilha(storeBase);
 const ctx = vm.createContext({
   JSON, String, Number, Error, Date, Math, Set, Object, Array, isFinite, isNaN, console,
   Logger: { log: (f, ...a) => logs.push(String(f).replace(/%s/g, () => a.shift())) },
   Utilities: { getUuid: () => require('crypto').randomUUID() },
   PropertiesService: { getScriptProperties: () => ({ getProperty: k => props[k], setProperty: (k, v) => { props[k] = v; } }) },
   // projeto solto: nao existe planilha "ativa" nem janelas (getUi); so openById
-  SpreadsheetApp: { openById: id => { if (id !== 'ID_TESTE') throw new Error('Unexpected error while getting the method or property openById'); return planilha; }, newDataValidation: () => chain(), newConditionalFormatRule: () => chain() },
+  SpreadsheetApp: { openById: id => { if (id === 'ID_BASE') return planilhaBase; if (id !== 'ID_TESTE') throw new Error('Unexpected error while getting the method or property openById'); return planilha; }, newDataValidation: () => chain(), newConditionalFormatRule: () => chain() },
   LockService: { getScriptLock: () => ({ tryLock: () => true, waitLock() {}, releaseLock() {} }) },
   ContentService: { MimeType: { JSON: 'json' }, createTextOutput: t => ({ setMimeType: () => t }) },
   ScriptApp: { getProjectTriggers: () => triggers, deleteTrigger: t => triggers.splice(triggers.indexOf(t), 1),
@@ -65,7 +66,7 @@ delete props.SENHA;
 carregar(fonte.replace('COLE_AQUI_O_ID_DA_PLANILHA', 'ID_TESTE'));
 
 // ---- preparacao e senha
-run('testarAcesso()'); assert.match(logs.pop(), /Aba FRETES encontrada/);
+run('testarAcesso()'); assert.ok(logs.some(l => /Aba FRETES encontrada/.test(l)) && logs.some(l => /Aba Base encontrada/.test(l)));
 run('mostrarSenha()'); const SENHA = props.SENHA; assert.ok(SENHA.length >= 60, 'cria a senha se nao existir');
 run('mostrarSenha()'); assert.strictEqual(props.SENHA, SENHA, 'mostrar nao troca a senha');
 run('gerarSenha()'); assert.notStrictEqual(props.SENHA, SENHA, 'gerar troca a senha'); props.SENHA = SENHA;
@@ -111,10 +112,22 @@ run('prepararTudo()');
 assert.strictEqual(props.FR_AUTO, 'nao'); assert.strictEqual(props.SENHA, SENHA);
 assert.strictEqual(col(achar('a13'), 'STATUS'), 'REVISAR');
 assert.ok(logs.some(l => /ENDERECO: copie em Implantar/.test(l)));
+// Base e Mot em OUTRA planilha (FR_ID_BASE): a FRETES fica numa planilha so com ela
+storeBase.Base = sheets.Base; storeBase.Mot = sheets.Mot; delete sheets.Base; delete sheets.Mot;
+sheets.FRETES = [CAB];
+carregar(fonte.replace('COLE_AQUI_O_ID_DA_PLANILHA', 'ID_TESTE'));
+assert.throws(() => run('importarDaBase()'), /Base vazia ou inexistente/); // sem FR_ID_BASE procura na mesma planilha
+carregar(fonte.replace('COLE_AQUI_O_ID_DA_PLANILHA', 'ID_TESTE').replace("const FR_ID_BASE = '';", "const FR_ID_BASE = 'ID_BASE';"));
+run('testarAcesso()'); assert.ok(logs.some(l => /Aba Base encontrada/.test(l)));
+assert.strictEqual(run('importarDaBase()').novas, 5, 'le a Base da outra planilha e escreve a FRETES na nova');
+assert.deepStrictEqual(sheets.FRETES.slice(1).map(r => r[CAB.indexOf('IDCARGA')]).sort(), ['a1', 'a11', 'a12', 'a13', 'a8']);
+assert.strictEqual(storeBase.Base.length, 14, 'a planilha da Base nao e alterada');
+sheets.Base = storeBase.Base; sheets.Mot = storeBase.Mot; // volta ao cenario de uma planilha so
+carregar(fonte.replace('COLE_AQUI_O_ID_DA_PLANILHA', 'ID_TESTE'));
 // Base vazia nao fecha nada
 sheets.Base = [sheets.Base[0]];
 assert.throws(() => run('importarDaBase()'), /Base vazia/);
-assert.strictEqual(col(achar('a11'), 'STATUS'), 'Publicado');
+assert.ok(sheets.FRETES.some(r => r[CAB.indexOf('IDCARGA')] === 'a11'), 'nada foi apagado');
 // gatilho: liga e desliga sem duplicar
 run('ativarImportacaoAutomatica()'); run('ativarImportacaoAutomatica()');
 assert.strictEqual(triggers.length, 1);

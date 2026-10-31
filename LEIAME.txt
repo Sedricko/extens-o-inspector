@@ -58,6 +58,7 @@ Fluxo: aba Base (seu sistema) -> aba FRETES -> extensao publica na Fretebras -> 
 o STATUS vira FECHAR -> a extensao desativa (ou exclui) na Fretebras.
 - UM projeto de Apps Script, solto da planilha (script.google.com/create): cole planilha/fretes-tudo.gs, troque FR_ID pelo ID da planilha
   e rode "prepararTudo" (aceite as permissoes): confere o acesso, prepara a aba FRETES, garante a senha e importa as cargas (REVISAR).
+  FR_ID = planilha da aba FRETES; FR_ID_BASE = planilha das abas Base e Mot (em branco = a mesma). Pode ser planilhas diferentes.
   Sem menu: rode as funcoes pelo editor (lista ao lado de "Depuracao"); os resultados saem no Registro de execucao.
   Funcoes: prepararTudo, importarDaBase, ativar/desativarImportacaoAutomatica (10 min), ligar/desligarPublicacaoAutomatica, mostrarSenha, gerarSenha.
   (O aplicativo da web nao abria num projeto ligado a planilha; no projeto solto funcionou.)
