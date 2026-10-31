@@ -136,12 +136,27 @@ async function fbDeleteTest() {
 
 // Preenche o formulario "Criar frete" numa aba em segundo plano a partir de uma linha da planilha (padrao: LINHA_PADRAO).
 // A aba fica aberta, sem tomar o foco; com publish=true clica em Publicar, le o codigo e fecha so essa aba.
+// Abre a pagina da Fretebras: aba em segundo plano (padrao) ou janela MINIMIZADA (opcao da pagina Sincronizar).
+async function fbAbrir(url) {
+  const cfg = typeof syncCfg === 'function' ? await syncCfg() : {};
+  if (cfg.janela === 'minimizada') {
+    const w = await chrome.windows.create({ url, state: 'minimized', focused: false });
+    return { tab: w.tabs[0], janela: w.id };
+  }
+  return { tab: await chrome.tabs.create({ url, active: false }) };
+}
+// Se algo falhou (ou a aba e para voce conferir), a janela minimizada volta a aparecer, sem tomar o foco.
+async function fbRestaurar(a) {
+  if (a.janela) await chrome.windows.update(a.janela, { state: 'normal', focused: false }).catch(() => {});
+}
+
 let FB_TENTATIVAS = 80; // x 500 ms; so o teste automatico muda
 
 async function fbFillTest(base = FB.site, publish = false, row = null) { // base: so o teste automatico muda
   const { passos, erros } = linhaParaPassos(row || LINHA_PADRAO);
   if (erros.length) throw new Error('Linha invalida: ' + erros.join('; '));
-  const tab = await chrome.tabs.create({ url: base + 'meus-fretes/cadastrar', active: false });
+  const aberta = await fbAbrir(base + 'meus-fretes/cadastrar');
+  const tab = aberta.tab;
   const ask = (cmd, arg) => chrome.tabs.sendMessage(tab.id, { cmd, arg });
   let last;
   // Abrir o endereco direto passa pelo login da Fretebras e a pagina recarrega: se isso cortar a conversa, tenta de novo.
@@ -154,22 +169,24 @@ async function fbFillTest(base = FB.site, publish = false, row = null) { // base
     if (!ready) break;
     try {
       const r = await ask('fill', passos); // a aba fica em segundo plano: nao tira voce da sua aba
-      if (!publish || !r.ok) return r;
+      if (!publish || !r.ok) { await fbRestaurar(aberta); return r; } // so preencher, ou falhou: a janela volta a aparecer
       // Publicar: uma tentativa so. Se a conversa cair depois do clique, nao ha como saber se saiu: nao repete.
       let p;
-      try { p = await ask('publish'); } catch (e) { return { ok: false, incerta: true, done: r.done, error: 'perdi a conversa com a pagina depois de clicar em Publicar: confira em Meus Fretes se o frete saiu (nao tentei de novo)' }; }
+      try { p = await ask('publish'); } catch (e) { await fbRestaurar(aberta); return { ok: false, incerta: true, done: r.done, error: 'perdi a conversa com a pagina depois de clicar em Publicar: confira em Meus Fretes se o frete saiu (nao tentei de novo)' }; }
       if (p.ok) chrome.tabs.remove(tab.id).catch(() => {}); // deu certo: fecha so a aba que a extensao abriu
       return { ...r, ...p, incerta: !!p.clicou && !p.ok }; // clicou e nao confirmou: pode ter saido
     } catch (e) { last = e; }
   }
   const err = new Error('Nao consegui preencher: ' + (last ? last.message : 'o formulario nao apareceu (a Central pediu login?).') + ' A aba ficou aberta em segundo plano.');
   err.global = !last; // formulario nunca apareceu: problema de login/site, nao da linha
+  await fbRestaurar(aberta);
   throw err;
 }
 
 // Desativa ou exclui na Fretebras o frete com esse CODIGO (aba em segundo plano; fecha so se deu certo).
 async function fbClose(codigo, acao, base = FB.site) {
-  const tab = await chrome.tabs.create({ url: base + 'meus-fretes', active: false });
+  const aberta = await fbAbrir(base + 'meus-fretes');
+  const tab = aberta.tab;
   const ask = (cmd, arg) => chrome.tabs.sendMessage(tab.id, { cmd, arg });
   let ready = false;
   for (let i = 0; i < FB_TENTATIVAS && !ready; i++) {
@@ -179,10 +196,11 @@ async function fbClose(codigo, acao, base = FB.site) {
   if (!ready) {
     const err = new Error('Meus Fretes nao carregou (a Central pediu login?). A aba ficou aberta em segundo plano.');
     err.global = true;
+    await fbRestaurar(aberta);
     throw err;
   }
   let r;
-  try { r = await ask('close', { codigo, acao }); } catch (e) { throw new Error('perdi a conversa com a pagina ao fechar ' + codigo + ': confira em Meus Fretes'); }
-  if (r.ok) chrome.tabs.remove(tab.id).catch(() => {});
+  try { r = await ask('close', { codigo, acao }); } catch (e) { await fbRestaurar(aberta); throw new Error('perdi a conversa com a pagina ao fechar ' + codigo + ': confira em Meus Fretes'); }
+  if (r.ok) chrome.tabs.remove(tab.id).catch(() => {}); else await fbRestaurar(aberta);
   return r;
 }

@@ -406,6 +406,7 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
     await assert.rejects(sw.evaluate(u => syncCfg().then(c => planilhaGet({ ...c, url: u })), base404 + '/login'), /pediu login.*Qualquer pessoa/);
     await assert.rejects(sw.evaluate(() => syncCfg().then(c => planilhaGet({ ...c, token: 'errada' }))), /Planilha: senha invalida/);
     const { plano } = await sw.evaluate(() => syncPlano());
+    assert.strictEqual(await sw.evaluate(() => chrome.action.getBadgeText({})), '3', 'contador no icone: 3 acoes na fila');
     assert.deepStrictEqual(plano.acoes.map(a => [a.linha, a.tipo, a.modo || '']), [[2, 'publicar', ''], [5, 'fechar', 'desativar'], [6, 'fechar', 'excluir']]);
     assert.deepStrictEqual(plano.escritas.map(e => [e.linha, e.status.slice(0, 40)]),
       [[3, 'ERRO: ORIGEM deve ser CIDADE/UF'], [7, 'ERRO: falta o CODIGO para fechar'], [8, 'ERRO: igual a linha 4, que ja esta publi']]);
@@ -418,6 +419,7 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
 
     // rodada automatica: no maximo 2 acoes por vez (limite), reserva e devolve STATUS/CODIGO
     await sw.evaluate(() => syncAuto());
+    assert.strictEqual(await sw.evaluate(() => chrome.action.getBadgeText({})), '1', 'contador: 3 na fila, 2 feitas, falta 1');
     assert.deepStrictEqual([linhasPlanilha[0].status, linhasPlanilha[0].codigo], ['Publicado', 'SPGO-1770']);
     assert.strictEqual(linhasPlanilha[3].status, 'Desativado');
     assert.strictEqual(linhasPlanilha[4].status, 'EXCLUIR', 'ficou para a proxima rodada');
@@ -425,6 +427,10 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
     assert.match(linhasPlanilha[6].status, /^ERRO: igual a linha 4/);
     await sw.evaluate(() => syncAuto());
     assert.strictEqual(linhasPlanilha[4].status, 'Excluido');
+    assert.strictEqual(await sw.evaluate(() => chrome.action.getBadgeText({})), '', 'fila vazia: o contador some');
+    const hist = (await sw.evaluate(() => chrome.storage.local.get('syncHistorico'))).syncHistorico;
+    assert.deepStrictEqual(hist.map(h => [h.tipo, h.status, h.codigo]).reverse().slice(0, 3), [['publicar', 'Publicado', 'SPGO-1770'], ['fechar', 'Desativado', 'MGMG-27DE'], ['fechar', 'Excluido', 'MGMG-3401']], 'historico em ordem');
+    assert.strictEqual(hist.find(h => h.tipo === 'publicar').frete, 'EXTREMA/MG → FRUTAL/MG');
     const antesJson = JSON.stringify(linhasPlanilha), n = fechou.length;
     await sw.evaluate(() => syncAuto());
     assert.strictEqual(JSON.stringify(linhasPlanilha), antesJson, 'terceira rodada: nada novo, nada repetido');
@@ -464,8 +470,23 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
     assert.match(await pg.textContent('#msg'), /ação\(ões\)/, await pg.textContent('#msg'));
     assert.match(await pg.textContent('#tab'), /EXTREMA\/MG → SERRA\/ES/);
     assert.strictEqual(await pg.isDisabled('#executar'), false);
+    assert.ok((await pg.$$('#hist tr')).length >= 3 && /Hoje: \d+ publicado/.test(await pg.textContent('#resumo-hist')), 'historico aparece na pagina');
     await pg.close();
     await sw.evaluate(() => { FB.site = 'https://novacentral.fretebras.com.br/'; FB_TENTATIVAS = 80; });
+
+    // janela minimizada: publica e fecha a janela; se falhar, a janela volta a aparecer
+    await sw.evaluate(async () => { const c = (await chrome.storage.local.get('syncCfg')).syncCfg; await chrome.storage.local.set({ syncCfg: { ...c, janela: 'minimizada' } }); });
+    const janelasAntes = await sw.evaluate(async () => (await chrome.windows.getAll()).length);
+    const pubMin = await sw.evaluate(({ b, l }) => fbFillTest(b, true, l), { b: base, l: { origem: 'EXTREMA/MG', destino: 'FRUTAL/MG', produto: 'JANELA', valor: 'A combinar', peso: '25 Ton', paletes: '', veiculo: 'Carreta', carroceria: 'Sider', rastreada: 'Sim', lona: 'Não', pagamento: 'Outro', observacoes: '', idcarga: 'min1' } });
+    assert.ok(pubMin.ok && pubMin.code === 'SPGO-1770', JSON.stringify(pubMin));
+    await new Promise(r => setTimeout(r, 500));
+    assert.strictEqual(await sw.evaluate(async () => (await chrome.windows.getAll()).length), janelasAntes, 'a janela minimizada foi fechada junto com a aba');
+    const so = await sw.evaluate(({ b, l }) => fbFillTest(b, false, l), { b: base, l: { origem: 'EXTREMA/MG', destino: 'FRUTAL/MG', produto: 'JANELA', valor: 'A combinar', peso: '25 Ton', paletes: '', veiculo: 'Carreta', carroceria: 'Sider', rastreada: 'Sim', lona: 'Não', pagamento: 'Outro', observacoes: '', idcarga: 'min2' } });
+    assert.ok(so.ok);
+    const estados = await sw.evaluate(async () => (await chrome.windows.getAll()).map(w => w.state));
+    assert.ok(!estados.includes('minimized'), 'so preencher: a janela volta a aparecer para voce conferir: ' + estados);
+    for (const p of ctx.pages().filter(p => p.url().endsWith('/cadastrar'))) await p.close();
+    await sw.evaluate(async () => { const c = (await chrome.storage.local.get('syncCfg')).syncCfg; await chrome.storage.local.set({ syncCfg: { ...c, janela: 'aba' } }); });
 
     // outro site nao consegue mandar sessao falsa nem publicar
     const antes = (await sw.evaluate(async () => (await chrome.storage.session.get('fb')).fb)).refresh;

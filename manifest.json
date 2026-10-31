@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Master SPA",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "description": "Mapeia o DOM (com componentes React) e as chamadas fetch/XHR de uma SPA, exporta JSON e abre um painel de acoes.",
   "permissions": [
     "activeTab",

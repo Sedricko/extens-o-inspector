@@ -39,17 +39,27 @@
   <label for="fechar">FECHAR faz o quê?</label>
   <select id="fechar"><option value="desativar">Desativar (dá para reverter)</option><option value="excluir">Excluir (definitivo)</option></select>
   <label><input id="auto" type="checkbox"> Sincronizar sozinha a cada <input id="minutos" type="number" min="1" max="240" value="15"> min, com no máximo <input id="limite" type="number" min="1" max="30" value="5"> ações por vez (só com o Chrome aberto)</label>
+  <label for="janela">Abrir a Fretebras em</label>
+  <select id="janela"><option value="aba">Aba em segundo plano</option><option value="minimizada">Janela minimizada (some da tela; volta a aparecer se der erro)</option></select>
   <label>Intervalo entre publicações <input id="pausa-seg" type="number" min="5" max="120" value="10"> s</label>
   <div class="bar"><button id="salvar" class="pri">Salvar</button><button id="testar">Testar a ligação</button><span id="teste"></span></div>
 
   <h2>Sincronizar agora</h2>
-  <div class="bar"><button id="previa">Ver o que vai acontecer</button><button id="executar" class="pri" disabled>Executar</button><button id="parar" disabled>Parar depois da atual</button><span id="msg" role="status"></span></div>
+  <div class="bar"><button id="previa">Ver o que vai acontecer</button><button id="executar" class="pri" disabled>Executar</button><button id="parar" disabled>Parar depois da atual</button><span id="msg" role="status"></span><span id="fila" class="mut"></span></div>
   <table>
     <thead><tr><th>Linha</th><th>Ação</th><th>Frete</th><th>Situação</th></tr></thead>
     <tbody id="tab"></tbody>
   </table>
 
-  <h2>Histórico</h2>
+  <h2>Histórico de fretes</h2>
+  <p id="resumo-hist" class="mut"></p>
+  <table>
+    <thead><tr><th>Quando</th><th>Ação</th><th>Frete</th><th>Resultado</th><th>Código</th></tr></thead>
+    <tbody id="hist"></tbody>
+  </table>
+  <div class="bar"><button id="limpar-hist">Limpar o histórico de fretes</button></div>
+
+  <h2>Registro técnico</h2>
   <div id="log"></div>
   <script src="../scripts/linhas.js"></script>
   <script src="sync.js"></script>

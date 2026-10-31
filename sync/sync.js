@@ -9,17 +9,24 @@ async function carregar() {
   const { syncCfg = {} } = await chrome.storage.local.get('syncCfg');
   $('url').value = syncCfg.url || ''; $('token').value = syncCfg.token || '';
   $('fechar').value = syncCfg.fechar || 'desativar'; $('auto').checked = !!syncCfg.auto;
-  $('minutos').value = syncCfg.minutos || 15; $('limite').value = syncCfg.limite || 5; $('pausa-seg').value = syncCfg.pausaSeg || 10;
+  $('janela').value = syncCfg.janela || 'aba'; $('minutos').value = syncCfg.minutos || 15; $('limite').value = syncCfg.limite || 5; $('pausa-seg').value = syncCfg.pausaSeg || 10;
   await atualizar();
 }
 async function atualizar() {
-  const { syncEstado = {}, syncLogs = [] } = await chrome.storage.local.get(['syncEstado', 'syncLogs']);
+  const { syncEstado = {}, syncLogs = [], syncHistorico = [], syncFila = 0 } = await chrome.storage.local.get(['syncEstado', 'syncLogs', 'syncHistorico', 'syncFila']);
+  $('fila').textContent = syncFila ? `Faltam ${syncFila} ação(ões) (o número também aparece no ícone da extensão).` : '';
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const deHoje = syncHistorico.filter(h => h.t >= hoje.getTime());
+  const conta = (tipo, ok) => deHoje.filter(h => h.tipo === tipo && (ok ? !/^(ERRO|INCERTA)/.test(h.status) : /^(ERRO|INCERTA)/.test(h.status))).length;
+  $('resumo-hist').textContent = syncHistorico.length ? `Hoje: ${conta('publicar', true)} publicado(s), ${conta('fechar', true)} fechado(s), ${conta('publicar', false) + conta('fechar', false)} com erro ou incerto(s).` : 'Nada ainda.';
+  $('hist').innerHTML = syncHistorico.slice(0, 100).map(h => `<tr><td>${esc(new Date(h.t).toLocaleString('pt-BR'))}</td><td>${h.tipo === 'publicar' ? 'Publicar' : 'Fechar'} (linha ${esc(h.linha)})</td><td>${esc(h.frete)}</td>
+    <td class="${/^(ERRO|INCERTA)/.test(h.status) ? 'err' : 'ok'}">${esc(h.status)}${h.nota ? ' — ' + esc(h.nota) : ''}</td><td>${esc(h.codigo)}</td></tr>`).join('');
   $('pausa').hidden = !syncEstado.pausado;
   $('motivo').textContent = syncEstado.motivo || '';
   $('log').innerHTML = syncLogs.map(l => `<div class="${l.nivel === 'erro' ? 'err' : ''}">${new Date(l.t).toLocaleString('pt-BR')}  ${esc(l.txt)}</div>`).join('') || '<span class="mut">Nada ainda.</span>';
 }
 const cfgDaTela = () => ({ url: $('url').value.trim(), token: $('token').value.trim(), fechar: $('fechar').value, auto: $('auto').checked,
-  minutos: Math.max(1, +$('minutos').value || 15), limite: Math.max(1, +$('limite').value || 5), pausaSeg: Math.max(5, +$('pausa-seg').value || 10) });
+  minutos: Math.max(1, +$('minutos').value || 15), limite: Math.max(1, +$('limite').value || 5), pausaSeg: Math.max(5, +$('pausa-seg').value || 10), janela: $('janela').value });
 
 $('salvar').onclick = async () => { await chrome.storage.local.set({ syncCfg: cfgDaTela() }); $('teste').textContent = 'Salvo.'; };
 $('testar').onclick = async () => {
@@ -77,5 +84,6 @@ $('executar').onclick = async () => {
   } finally { await send('sync-fim'); rodando = false; desenhar(); atualizar(); }
 };
 $('parar').onclick = () => { parar = true; };
-chrome.storage.onChanged.addListener(c => { if (c.syncLogs || c.syncEstado) atualizar(); });
+$('limpar-hist').onclick = async () => { if (confirm('Apagar o histórico de fretes desta tela? (a planilha não muda)')) { await chrome.storage.local.remove('syncHistorico'); atualizar(); } };
+chrome.storage.onChanged.addListener(c => { if (c.syncLogs || c.syncEstado || c.syncHistorico || c.syncFila) atualizar(); });
 carregar();

@@ -1,6 +1,6 @@
 // Sincronizacao com a planilha (aplicativo da web do Apps Script): publica o que esta PUBLICAR, fecha o que esta
 // FECHAR/EXCLUIR/DESATIVAR e devolve STATUS/CODIGO. Manual (pagina de sincronizacao) e automatica (alarme).
-const SYNC_PADRAO = { url: '', token: '', fechar: 'desativar', auto: false, minutos: 15, limite: 5, pausaSeg: 10 };
+const SYNC_PADRAO = { url: '', token: '', fechar: 'desativar', auto: false, minutos: 15, limite: 5, pausaSeg: 10, janela: 'aba' };
 const syncCfg = async () => ({ ...SYNC_PADRAO, ...((await chrome.storage.local.get('syncCfg')).syncCfg || {}) });
 
 async function syncLog(txt, nivel = 'info') {
@@ -53,7 +53,24 @@ async function syncPlano() {
   await syncReenviar(cfg);
   const linhas = (await planilhaGet(cfg)).map(linhaDeObjeto);
   const feitas = (await chrome.storage.local.get('lotePublicados')).lotePublicados || {};
-  return { plano: planoDeSync(linhas, feitas, cfg), total: linhas.length };
+  const plano = planoDeSync(linhas, feitas, cfg);
+  await syncBadge(plano.acoes.length); // contador no icone: quantas acoes faltam
+  return { plano, total: linhas.length };
+}
+
+// Contador no icone da extensao (fila de acoes). O "!" de pausa tem prioridade.
+async function syncBadge(n) {
+  await chrome.storage.local.set({ syncFila: n });
+  if ((await syncEstado()).pausado) return;
+  chrome.action.setBadgeText({ text: n > 0 ? String(n) : '' });
+  chrome.action.setBadgeBackgroundColor({ color: '#2563eb' });
+}
+
+// Historico de fretes publicados/fechados (mais novo primeiro).
+async function syncHistoria(item) {
+  const { syncHistorico = [] } = await chrome.storage.local.get('syncHistorico');
+  syncHistorico.unshift({ t: Date.now(), ...item });
+  await chrome.storage.local.set({ syncHistorico: syncHistorico.slice(0, 300) });
 }
 
 async function syncEscrever(escritas) {
@@ -62,7 +79,20 @@ async function syncEscrever(escritas) {
 }
 
 // Executa UMA acao: reserva a linha na planilha (se outra sincronizacao ja pegou, nao faz nada), age no site e grava o resultado.
+// Executa UMA acao, desconta do contador do icone e registra no historico.
 async function syncAcao(acao, base = FB.site) {
+  const r = await syncAcaoFeita(acao, base); // lanca se o login/site cair: nesse caso nada e descontado nem registrado
+  const { syncFila = 0 } = await chrome.storage.local.get('syncFila');
+  await syncBadge(Math.max(0, syncFila - 1));
+  if (!r.pulada) await syncHistoria({
+    tipo: acao.tipo, linha: acao.linha, status: r.status, nota: r.texto || '',
+    frete: acao.tipo === 'publicar' ? `${acao.row.origem} → ${acao.row.destino}` : acao.codigo,
+    codigo: r.codigo || (acao.tipo === 'fechar' ? acao.codigo : ''),
+  });
+  return r;
+}
+
+async function syncAcaoFeita(acao, base) {
   const cfg = await syncCfg();
   const publicar = acao.tipo === 'publicar';
   const conf = { origem: acao.row.origem, destino: acao.row.destino };
@@ -138,7 +168,8 @@ async function syncAuto(base = FB.site) {
 
 async function syncRetomar() {
   await syncEstadoSet({ pausado: false, motivo: '' });
-  chrome.action.setBadgeText({ text: '' });
+  const { syncFila = 0 } = await chrome.storage.local.get('syncFila');
+  await syncBadge(syncFila);
 }
 
 async function syncAlarme() {
