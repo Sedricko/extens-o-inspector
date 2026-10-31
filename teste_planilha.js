@@ -22,8 +22,8 @@ const sheets = {
   ],
   Mot: [['idCarga', 'idDados', 'Situacao', 'CPFMotorista'], ['a4', 'x', 'FECHADO', '000.000.000-00'], ['a11', 'y', 'CANCELADO', '1']],
 };
-const props = { SENHA: 'segredo' };
-const triggers = [];
+const props = {};
+const triggers = [], logs = [];
 const planilha = {
   getSheetByName: n => (sheets[n] ? sheet(n) : null),
   toast() {},
@@ -44,30 +44,42 @@ const sheet = nome => {
   };
 };
 const ctx = vm.createContext({
+  Logger: { log: (f, ...a) => logs.push(String(f).replace(/%s/g, () => a.shift())) },
   JSON, String, Number, Error, Date, Math, Set, Object, Array, isFinite, isNaN, console,
-  Utilities: { getUuid: () => 'u-u' },
+  Utilities: { getUuid: () => require('crypto').randomUUID() },
   PropertiesService: { getScriptProperties: () => ({ getProperty: k => props[k], setProperty: (k, v) => { props[k] = v; } }) },
-  SpreadsheetApp: { getActiveSpreadsheet: () => planilha, getActive: () => planilha, getUi: () => ({ alert() {} }) },
+  SpreadsheetApp: { getActiveSpreadsheet: () => planilha, getActive: () => planilha, getUi: () => ({ alert() {} }), openById: id => { if (id !== 'ID_TESTE') throw new Error('Unexpected error while getting the method or property openById'); return planilha; } },
   LockService: { getScriptLock: () => ({ tryLock: () => true, waitLock() {}, releaseLock() {} }) },
   ContentService: { MimeType: { JSON: 'json' }, createTextOutput: t => ({ setMimeType: () => t }) },
   ScriptApp: { getProjectTriggers: () => triggers, deleteTrigger: t => triggers.splice(triggers.indexOf(t), 1),
     newTrigger: fn => ({ timeBased: () => ({ everyMinutes: () => ({ create: () => triggers.push({ getHandlerFunction: () => fn }) }) }) }) },
 });
 // o usuario cola os arquivos no mesmo projeto: aqui os 3 (o do usuario nao entra; so conferimos que nao ha nomes repetidos entre os nossos)
-for (const f of ['fretes-config.gs', 'fretes-importar.gs']) vm.runInContext(fs.readFileSync(`${__dirname}/planilha/${f}`, 'utf8').replace(/^const /gm, 'var '), ctx);
+const carregar = (f, troca = x => x) => vm.runInContext(troca(fs.readFileSync(`${__dirname}/planilha/${f}`, 'utf8')).replace(/^const /gm, 'var '), ctx);
+for (const f of ['fretes-config.gs', 'fretes-importar.gs']) carregar(f); // projeto da planilha (menu, importador)
+// o aplicativo da web fica em outro projeto: aqui sem trocar o ID, para ver a mensagem de erro
+carregar('fretes-api.gs');
+const semId = JSON.parse(vm.runInContext('doGet', ctx)({ parameter: { token: 'x' } }));
+assert.ok(semId.ok === false && /troque FRAPI_PLANILHA_ID/.test(semId.erro) || /senha invalida/.test(semId.erro), JSON.stringify(semId));
+carregar('fretes-api.gs', t => t.replace('COLE_AQUI_O_ID_DA_PLANILHA', 'ID_TESTE'));
+vm.runInContext("PropertiesService.getScriptProperties().setProperty('SENHA', 'x')", ctx); // limpa
+
 const run = c => { const r = vm.runInContext(c, ctx); return r && typeof r === 'object' ? JSON.parse(JSON.stringify(r)) : r; }; // copia para fora do simulador
 
 // ---- aplicativo da web (senha, leitura, reserva, nao sobrescreve)
+run('testarAcesso()'); assert.match(logs[0], /Aba FRETES encontrada/);
+run('gerarSenha()'); props.SENHA = logs[1].split(': ')[1]; assert.ok(props.SENHA.length >= 60, 'senha longa');
+const SENHA = props.SENHA;
 const get = t => JSON.parse(run('doGet')({ parameter: { token: t } }));
 const post = o => JSON.parse(run('doPost')({ postData: { contents: JSON.stringify(o) } }));
 sheets.FRETES.splice(1, 0, ['EXTREMA/MG', 'FRUTAL/MG', 'X', 'Carreta', 'PUBLICAR', '']);
 assert.strictEqual(get('errada').ok, false);
-assert.deepStrictEqual(get('segredo').linhas.map(l => [l.linha, l.origem, l.status, l.codigo]), [[2, 'EXTREMA/MG', 'PUBLICAR', ''], [3, 'JACAREI/SP', 'Publicado', 'AB-1']]);
+assert.deepStrictEqual(get(SENHA).linhas.map(l => [l.linha, l.origem, l.status, l.codigo]), [[2, 'EXTREMA/MG', 'PUBLICAR', ''], [3, 'JACAREI/SP', 'Publicado', 'AB-1']]);
 const conf = { origem: 'extrema/mg', destino: 'FRUTAL/MG' };
-assert.deepStrictEqual(post({ token: 'segredo', atualizacoes: [{ linha: 2, status: 'PUBLICANDO...', esperado: ['publicar'], confere: conf }] }).gravadas, [2]);
-assert.strictEqual(post({ token: 'segredo', atualizacoes: [{ linha: 2, status: 'PUBLICANDO...', esperado: ['publicar'], confere: conf }] }).ignoradas.length, 1, 'segunda reserva recusada');
-assert.strictEqual(post({ token: 'segredo', atualizacoes: [{ linha: 3, status: 'x', confere: conf }] }).ignoradas[0].motivo, 'a linha nao e mais a mesma');
-assert.deepStrictEqual(post({ token: 'segredo', atualizacoes: [{ linha: 2, status: 'Publicado', codigo: 'MGMG-27DE', esperado: ['publicando...'], confere: conf }] }).gravadas, [2]);
+assert.deepStrictEqual(post({ token: SENHA, atualizacoes: [{ linha: 2, status: 'PUBLICANDO...', esperado: ['publicar'], confere: conf }] }).gravadas, [2]);
+assert.strictEqual(post({ token: SENHA, atualizacoes: [{ linha: 2, status: 'PUBLICANDO...', esperado: ['publicar'], confere: conf }] }).ignoradas.length, 1, 'segunda reserva recusada');
+assert.strictEqual(post({ token: SENHA, atualizacoes: [{ linha: 3, status: 'x', confere: conf }] }).ignoradas[0].motivo, 'a linha nao e mais a mesma');
+assert.deepStrictEqual(post({ token: SENHA, atualizacoes: [{ linha: 2, status: 'Publicado', codigo: 'MGMG-27DE', esperado: ['publicando...'], confere: conf }] }).gravadas, [2]);
 assert.deepStrictEqual([sheets.FRETES[1][4], sheets.FRETES[1][5]], ['Publicado', 'MGMG-27DE']);
 sheets.FRETES.splice(1, 1); // volta ao estado inicial
 

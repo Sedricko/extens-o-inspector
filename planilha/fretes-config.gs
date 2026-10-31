@@ -31,7 +31,6 @@ function criarMenuFretes() {
     .addItem('Publicar sozinho o que for importado: DESLIGAR', 'desligarPublicacaoAutomatica')
     .addSeparator()
     .addItem('Gerar 10 exemplos', 'gerarExemplos10')
-    .addItem('Gerar senha da integracao', 'gerarSenhaIntegracao')
     .addToUi();
 }
 
@@ -73,7 +72,7 @@ function configurarAbaFretes() {
     SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=AND($A2<>"";COUNTIFS($A$2:$A;$A2;$B$2:$B;$B2;$C$2:$C;$C2;$E$2:$E;$E2;$G$2:$G;$G2;$H$2:$H;$H2;$K$2:$K;$K2)>1)').setBackground('#fed7aa').setRanges([todas]).build(),
   ]);
 
-  SpreadsheetApp.getUi().alert('Aba FRETES pronta. Preencha uma linha por frete.\n\nPara publicar: selecione as linhas (com o cabecalho e as colunas STATUS e CODIGO), copie e cole na pagina "Publicar lote" da extensao.\nA extensao pula linhas com CODIGO ou STATUS "Publicado". Ao final, copie STATUS e CODIGO la e cole de volta aqui.');
+  SpreadsheetApp.getUi().alert('Aba FRETES pronta. Preencha uma linha por frete.\n\nPara publicar: selecione as linhas (com o cabecalho e as colunas STATUS e CODIGO), copie e cole na pagina "Publicar lote" da extensao.');
 }
 
 function gerarExemplos10() {
@@ -96,86 +95,4 @@ function gerarExemplos10() {
   const linha = Math.max(aba.getLastRow(), 1) + 1; // sempre abaixo do que ja existe
   aba.getRange(linha, 1, ex.length, FR_COLUNAS.length).setValues(ex);
   SpreadsheetApp.getUi().alert('10 exemplos adicionados nas linhas ' + linha + ' a ' + (linha + 9) + '.\nO produto e "TESTE - EXCLUIR": se publicar, exclua depois em Meus Fretes.');
-}
-
-
-// ===================== Integracao com a extensao (aplicativo da web) =====================
-// Implantar: Implantar > Nova implantacao > Tipo: App da Web > Executar como: Eu > Quem pode acessar: Qualquer pessoa.
-// Copie o endereco (termina em /exec) e a senha (menu Fretes > Gerar senha da integracao) para a extensao.
-// STATUS que a extensao entende: PUBLICAR, FECHAR, EXCLUIR, DESATIVAR. Ela escreve: PUBLICANDO..., Publicado + CODIGO,
-// FECHANDO..., Desativado, Excluido, Nao encontrado, INCERTA - conferir, ERRO: ...
-
-const frNorm_ = t => String(t == null ? '' : t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
-const frChaveCol_ = h => frNorm_(h).replace(/[^a-z]/g, '');
-const frJson_ = o => ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
-
-function gerarSenhaIntegracao() {
-  const senha = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
-  PropertiesService.getScriptProperties().setProperty('SENHA', senha);
-  let url = '';
-  try { url = ScriptApp.getService().getUrl() || ''; } catch (e) {}
-  const html = HtmlService.createHtmlOutput(
-    '<p>Senha da integracao (cole na extensao; quem tiver o endereco e a senha le e escreve nas linhas):</p>' +
-    '<input readonly style="width:100%" value="' + senha + '" onclick="this.select()">' +
-    '<p>Endereco do aplicativo da web:</p><input readonly style="width:100%" value="' + (url || '(ainda nao implantado)') + '" onclick="this.select()">' +
-    '<p>Gerar de novo troca a senha e a antiga para de funcionar.</p>').setWidth(520).setHeight(260);
-  SpreadsheetApp.getUi().showModalDialog(html, 'Senha da integracao');
-}
-
-function frChecaSenha_(s) {
-  const certa = PropertiesService.getScriptProperties().getProperty('SENHA');
-  if (!certa || String(s) !== certa) throw new Error('senha invalida');
-}
-
-function frAba_() {
-  const aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(FR_ABA);
-  if (!aba) throw new Error('aba FRETES nao existe');
-  return aba;
-}
-
-function doGet(e) {
-  try {
-    frChecaSenha_(e.parameter.token);
-    const vals = frAba_().getDataRange().getValues();
-    const cab = vals[0].map(frChaveCol_);
-    const linhas = vals.slice(1).map((r, i) => {
-      const o = { linha: i + 2 };
-      cab.forEach((k, j) => { if (k) o[k] = r[j] === '' || r[j] == null ? '' : String(r[j]); });
-      return o;
-    }).filter(o => o.origem || o.status);
-    return frJson_({ ok: true, linhas });
-  } catch (err) { return frJson_({ ok: false, erro: String(err.message || err) }); }
-}
-
-// atualizacoes: [{ linha, status, codigo?, esperado?: [status atuais aceitos], confere?: { origem, destino } }]
-// So grava se o STATUS atual e um dos esperados e a origem/destino da linha conferem (a planilha pode ter sido reordenada).
-function doPost(e) {
-  const lock = LockService.getScriptLock();
-  try {
-    const corpo = JSON.parse(e.postData.contents);
-    frChecaSenha_(corpo.token);
-    lock.waitLock(20000);
-    const aba = frAba_();
-    const cab = aba.getRange(1, 1, 1, aba.getLastColumn()).getValues()[0].map(frChaveCol_);
-    const col = k => cab.indexOf(k) + 1;
-    ['status', 'codigo', 'origem', 'destino'].forEach(k => { if (!col(k)) throw new Error('falta a coluna ' + k.toUpperCase()); });
-    const gravadas = [], ignoradas = [];
-    (corpo.atualizacoes || []).forEach(u => {
-      const linha = Number(u.linha);
-      if (!(linha >= 2 && linha <= aba.getLastRow())) return ignoradas.push({ linha: u.linha, motivo: 'linha fora da planilha' });
-      const atual = frNorm_(aba.getRange(linha, col('status')).getValue());
-      if (u.esperado && !u.esperado.map(frNorm_).includes(atual)) return ignoradas.push({ linha, motivo: 'STATUS mudou (' + atual + ')' });
-      if (u.confere && (frNorm_(aba.getRange(linha, col('origem')).getValue()) !== frNorm_(u.confere.origem) ||
-                        frNorm_(aba.getRange(linha, col('destino')).getValue()) !== frNorm_(u.confere.destino)))
-        return ignoradas.push({ linha, motivo: 'a linha nao e mais a mesma' });
-      aba.getRange(linha, col('status')).setValue(String(u.status));
-      if (u.codigo !== undefined) aba.getRange(linha, col('codigo')).setValue(String(u.codigo));
-      gravadas.push(linha);
-    });
-    return frJson_({ ok: true, gravadas, ignoradas });
-  } catch (err) {
-    return frJson_({ ok: false, erro: String(err.message || err) });
-  } finally {
-    try { lock.releaseLock(); } catch (x) {}
-  }
 }

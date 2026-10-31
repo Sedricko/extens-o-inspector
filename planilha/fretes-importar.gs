@@ -10,6 +10,8 @@
  *        -> a extensao publica e escreve Publicado + CODIGO -> quando a carga encerra, este script troca para FECHAR
  *        -> a extensao desativa/exclui na Fretebras.
  */
+const frNorm_ = t => String(t == null ? '' : t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+const frChaveCol_ = h => frNorm_(h).replace(/[^a-z]/g, '');
 const FR_IMP = { BASE: 'Base', MOT: 'Mot', MAX_NOVAS: 10, VENCE_HORAS: 24, MAX_PESO_TON: 50 };
 
 function frCabecalho_(linha) {
