@@ -162,7 +162,7 @@ const SPA = `<!doctype html><title>Criar frete</title><body><main>
     const api = [];
     await ctx.route('https://novacentral.fretebras.com.br/**', r => r.fulfill({ contentType: 'text/html', body: `<!doctype html><body>Central<script>
       fetch('https://sso-external.fretebras.com.br/realms/companies/protocol/openid-connect/token', { method: 'POST', body: 'grant_type=authorization_code&code=x' })
-        .then(() => { const x = new XMLHttpRequest(); x.open('GET', 'https://nca-gateway.fretebras.com.br/web/v1/home'); x.setRequestHeader('Authorization', 'Bearer A1'); x.setRequestHeader('x-app', 'central'); x.send(); });
+        .then(() => { const x = new XMLHttpRequest(); x.open('GET', 'https://nca-gateway.fretebras.com.br/web/v1/home'); x.setRequestHeader('Authorization', 'Bearer APP1'); x.setRequestHeader('x-app', 'central'); x.send(); });
     </script></body>` }));
     await ctx.route('https://sso-external.fretebras.com.br/**', r => {
       const refresh = (r.request().postData() || '').includes('grant_type=refresh_token');
@@ -173,6 +173,7 @@ const SPA = `<!doctype html><title>Criar frete</title><body><main>
     await ctx.route('https://nca-gateway.fretebras.com.br/**', r => {
       const q = r.request(), h = q.headers(), u = new URL(q.url()).pathname, m = q.method();
       api.push(`${m} ${u} ${h.authorization} ${h['x-app']}`);
+      if (h.authorization !== 'Bearer APP1') return r.fulfill({ status: 401, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"error":"Unauthorized","status":401}' });
       const body = u === '/web/v1/user/me' ? { data: { id_hashed: 'BwZE7', company: { id_hashed: 'xO48' } } }
         : u.endsWith('/duplicated') ? { isDuplicated: false, freight: [] }
         : m === 'POST' ? { data: { id: 'T1', freightCode: 'GOSP-TEST' } }
@@ -192,11 +193,13 @@ const SPA = `<!doctype html><title>Criar frete</title><body><main>
     const pub = await sw.evaluate(() => fbPublishTest());
     assert.deepStrictEqual(pub, { id: 'T1', code: 'GOSP-TEST' });
     assert.ok(api.includes('refresh'), 'token de 30 s venceu e foi renovado');
-    assert.ok(api.includes('POST /freight-management-bff/v1/freights Bearer A2 central'), api.join('\n'));
+    assert.ok(api.includes('POST /freight-management-bff/v1/freights Bearer APP1 central'), api.join('\n'));
     const sent = JSON.parse(api.find(a => a.startsWith('{"requestId"')));
     assert.ok(sent.requestId.startsWith('BwZE7-') && sent.freight.mainOwnerId === 'BwZE7' && sent.freight.productName === 'TESTE');
     assert.deepStrictEqual(await sw.evaluate(() => fbDeleteTest()), { deleted: 'GOSP-TEST' });
-    assert.ok(api.includes('DELETE /freight-management-bff/v1/freights Bearer A2 central'));
+    assert.ok(api.includes('DELETE /freight-management-bff/v1/freights Bearer APP1 central'));
+    assert.deepStrictEqual(saved.diag, { names: ['authorization', 'x-app'], scheme: 'Bearer', sameAsSso: false, credentials: 'padrao (xhr)' });
+    assert.ok(!JSON.stringify(saved.diag).includes('APP1'), 'diagnostico nao mostra o valor do login');
     // outro site nao consegue mandar sessao falsa nem publicar
     await app.evaluate(() => window.postMessage({ mspa: 'session', token: { access_token: 'X', refresh_token: 'X', expires_in: 1, refresh_expires_in: 1 } }, '*'));
     await app.waitForTimeout(300);

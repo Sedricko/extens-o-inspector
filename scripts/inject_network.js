@@ -26,20 +26,30 @@
   const FB_SITE = location.hostname === 'novacentral.fretebras.com.br';
   const LOGIN = /\/protocol\/openid-connect\/token/;
   const FB_API = /^https:\/\/nca-gateway\.fretebras\.com\.br\//;
-  let headersSent = false;
+  let headersSent = false, lastAuth = null, lastAccess = null;
   const session = data => FB_SITE && window.postMessage({ mspa: 'session', ...data }, location.origin);
   const tokenFrom = text => {
     try {
       const t = JSON.parse(text);
-      if (t.access_token && t.refresh_token) session({ token: { access_token: t.access_token, refresh_token: t.refresh_token, expires_in: t.expires_in, refresh_expires_in: t.refresh_expires_in } });
+      if (!t.access_token || !t.refresh_token) return;
+      lastAccess = t.access_token;
+      session({ token: { access_token: t.access_token, refresh_token: t.refresh_token, expires_in: t.expires_in, refresh_expires_in: t.refresh_expires_in } });
     } catch {}
   };
-  const headersFrom = (url, h) => {
-    if (headersSent || !FB_SITE || !FB_API.test(url) || !h) return;
-    const o = {};
-    new Headers(h).forEach((v, k) => { if (!/^(authorization|content-type|content-length|cookie)$/.test(k)) o[k] = v; });
+  // Copia como o site se identifica na API: o cabecalho de login real (pode nao ser o token do SSO) e os demais.
+  const headersFrom = (url, h, credentials) => {
+    if (!FB_SITE || !FB_API.test(url)) return;
+    const all = new Headers(h || undefined);
+    const auth = all.get('authorization');
+    if (auth && auth !== lastAuth) { lastAuth = auth; session({ auth }); }
+    if (headersSent) return;
     headersSent = true;
-    session({ headers: o });
+    const o = {};
+    all.forEach((v, k) => { if (!/^(authorization|content-type|content-length|cookie)$/.test(k)) o[k] = v; });
+    session({
+      headers: o,
+      diag: { names: [...all.keys()], scheme: auth ? auth.split(' ')[0] : 'nenhum', sameAsSso: !!auth && auth === `Bearer ${lastAccess}`, credentials: credentials || 'padrao' },
+    });
   };
 
   const origFetch = window.fetch;
@@ -52,7 +62,7 @@
       t: Date.now(),
     };
     if (init && typeof init.body === 'string') e.reqBody = mask(init.body);
-    headersFrom(e.url, (init && init.headers) || (isReq && input.headers));
+    headersFrom(e.url, (init && init.headers) || (isReq && input.headers), (init && init.credentials) || (isReq && input.credentials));
     try {
       const res = await origFetch.apply(this, arguments);
       if (LOGIN.test(e.url) && res.ok) res.clone().text().then(tokenFrom, () => {});
@@ -81,7 +91,7 @@
     if (e) {
       e.t = Date.now();
       if (typeof body === 'string') e.reqBody = mask(body);
-      headersFrom(e.url, this.__mspaH);
+      headersFrom(e.url, this.__mspaH, this.withCredentials ? 'include (xhr)' : 'padrao (xhr)');
       this.addEventListener('loadend', () => {
         if (LOGIN.test(e.url) && this.status === 200 && (this.responseType === '' || this.responseType === 'text')) tokenFrom(this.responseText);
         e.status = this.status;

@@ -24,13 +24,14 @@ const fromToken = t => ({
 
 async function fbSaveSession(msg) {
   if (msg.token) await fbSet(fromToken(msg.token));
-  if (msg.headers) await fbSet({ headers: msg.headers });
+  if (msg.headers) await fbSet({ headers: msg.headers, diag: msg.diag });
+  if (msg.auth) await fbSet({ auth: msg.auth, authAt: Date.now() });
 }
 
 async function fbStatus() {
   const fb = await fbGet();
   if (!fb.refresh) return { active: false };
-  return { active: Date.now() < fb.refreshExp, until: fb.refreshExp, lastTest: fb.lastTest || null };
+  return { active: Date.now() < fb.refreshExp, until: fb.refreshExp, lastTest: fb.lastTest || null, diag: fb.diag || null };
 }
 
 async function fbToken() {
@@ -51,13 +52,23 @@ async function fbToken() {
 
 async function fbApi(method, path, body) {
   const fb = await fbToken();
-  const r = await fetch(FB.api + path, {
-    method,
-    headers: { ...fb.headers, authorization: `Bearer ${fb.access}`, ...(body && { 'content-type': 'application/json' }) },
-    body: body && JSON.stringify(body),
-  });
-  const text = await r.text();
-  if (!r.ok) throw new Error(`${method} ${path} respondeu ${r.status}: ${text.slice(0, 200)}`);
+  // Primeiro o cabecalho que o proprio site usa; se a API recusar (401), tenta o token do SSO.
+  const auths = [...new Set([fb.auth, `Bearer ${fb.access}`].filter(Boolean))];
+  let r, text;
+  for (const authorization of auths) {
+    r = await fetch(FB.api + path, {
+      method,
+      credentials: 'include', // manda tambem os cookies do site, se a API usar
+      headers: { ...fb.headers, authorization, ...(body && { 'content-type': 'application/json' }) },
+      body: body && JSON.stringify(body),
+    });
+    text = await r.text();
+    if (r.status !== 401) break;
+  }
+  if (!r.ok) {
+    const d = fb.diag ? ` [site usa: ${fb.diag.scheme}, mesmo token do SSO: ${fb.diag.sameAsSso ? 'sim' : 'nao'}, cabecalhos: ${fb.diag.names.join(', ')}, credentials: ${fb.diag.credentials}]` : ' [ainda nao vi o site chamar a API: de F5 na Central]';
+    throw new Error(`${method} ${path} respondeu ${r.status}: ${text.slice(0, 120)}${d}`);
+  }
   return text ? JSON.parse(text) : null;
 }
 
