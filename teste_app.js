@@ -10,7 +10,7 @@ const FORM = eval(src.match(/const FORM = (`[\s\S]*?`);/)[1]);
 
 const EU = { id: 118708, id_hashed: 'BwZE7' }, NOME = 'JOHON LENON CHAGAS DURAES';
 const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><body>
-<div id="at">Ativos</div><div id="vazio"></div>
+<div role="dialog" id="pop" style="position:fixed;inset:0;background:#0008;z-index:9999;color:#fff">Conheça o novo recurso! <button onclick="pop.remove()">Agora não</button></div><div id="t1" style="position:fixed;left:20px;bottom:20px;width:300px;background:#111;color:#fff;z-index:50">Aproveite a promoção e seja visto por mais motoristas. <button aria-label="" onclick="t1.remove()"><svg width="8" height="8"></svg></button></div><div id="t2" style="position:fixed;left:20px;bottom:90px;width:300px;background:#e11;color:#fff;z-index:50">Alguns fretes foram desativados automaticamente. <button aria-label="" onclick="t2.remove()"><svg width="8" height="8"></svg></button><button onclick="fetch('/api/irdes')">Ir para Desativados</button></div><div id="at">Ativos</div><div id="vazio"></div>
 <div id="pp">Publicado por</div><div id="pan" hidden></div>
 <input id="q" placeholder="Buscar frete"><label><input type="checkbox" id="all"></label>
 <div id="lista"></div><div id="barra" hidden><button>Desativar</button><button>Excluir</button></div><div id="modal"></div><div id="toast"></div>
@@ -32,7 +32,7 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
   lista.addEventListener('change', () => { barra.hidden = !lista.querySelector('.f:checked'); });
   for (const b of barra.querySelectorAll('button')) b.onclick = () => {
     const acao = b.textContent;
-    modal.innerHTML = '<div><h3>' + acao + ' frete</h3><p>Tem certeza?</p><button>Cancelar</button><button id="c">' + acao + '</button></div>';
+    modal.innerHTML = '<div role="dialog"><h3>' + acao + ' frete</h3><p>Tem certeza?</p><button>Cancelar</button><button id="c">' + acao + '</button></div>';
     c.onclick = async () => {
       const ids = [...lista.querySelectorAll('.f:checked')].map(x => x.dataset.id), cod = lista.querySelector('.f:checked').parentElement.textContent.trim();
       modal.innerHTML = '';
@@ -44,7 +44,7 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
 </script></body>`;
 
 (async () => {
-  const pub = [], fechou = [], eventos = [];
+  const pub = [], fechou = [], eventos = []; let irDes = 0;
   const fretes = [];
   const novo = (i, quem) => fretes.push({ id: 'F' + i, freightCode: 'AA-' + String(1000 + i), freightStatus: 'enabled', publisher: quem === 'eu' ? { id: EU.id_hashed, fullName: NOME } : { id: 'oXd0Z', fullName: 'DIEGO RAFAEL' } });
   const reset = (meus, outros) => { fretes.length = 0; for (let i = 0; i < meus; i++) novo(i, 'eu'); for (let i = 0; i < outros; i++) novo(100 + i, 'outro'); eventos.length = 0; pub.length = 0; fechou.length = 0; };
@@ -85,6 +85,7 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
         for (const id of ids) fretes.splice(fretes.findIndex(x => x.id === id), 1);
         return j({ data: { errors: [], success: ids } });
       }
+      if (u.pathname === '/api/irdes') irDes++;
       if (u.pathname === '/api/pub') { pub.push(1); eventos.push('publicar'); }
       res.end('{}');
     });
@@ -101,6 +102,7 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
     app.rodar(`FB.site = ${JSON.stringify(base)}; FB_TENTATIVAS = 10;`);
     const limpa = () => app.chrome.storage.local.remove(['lotePublicados', 'syncEstado', 'syncLogs']);
 
+    assert.ok(true);
     // 1) contagem exata: so os meus (35), nunca os dos colegas (8)
     reset(35, 8); await cfg({});
     assert.deepStrictEqual(await app.rodar('fbContarAtivos()'), { ativos: 35 });
@@ -129,6 +131,9 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
     assert.ok(fretes.some(x => x.id === 'F100'), 'o do colega continua la');
     assert.deepStrictEqual(linhas.map(l => l.status), ['Desativado', 'Nao encontrado']);
 
+    assert.ok(saida.some(l => /Aviso do site .*novo recurso/.test(l)), 'fechou o popup e registrou: ' + saida.slice(0, 5).join(' | '));
+    assert.ok(saida.some(l => /Aviso do site .*promocao|Aviso do site .*promoção/i.test(l)) && saida.some(l => /automaticamente/.test(l)), 'fechou os dois avisos: ' + saida.slice(0, 6).join(' | '));
+    assert.strictEqual(irDes, 0, 'nunca clica em "Ir para Desativados"');
     console.log('OK teste_app');
   } finally { await ctx.close(); site.close(); planilha.close(); }
 })().catch(e => { console.error(e); process.exit(1); });

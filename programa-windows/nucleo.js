@@ -80,6 +80,10 @@ function criar({ ctx, arquivoDados, escrever = console.log }) {
 
   // fb_publisher.js roda dentro de cada pagina (como content script no mundo principal da pagina)
   ctx.addInitScript(fs.readFileSync(achar('fb_publisher.js'), 'utf8'));
+  // anuncios e popups: fecha os que so tem botao de dispensar (popups.js) e bloqueia rastreadores de propaganda/analise
+  ctx.addInitScript(fs.readFileSync(achar('popups.js'), 'utf8'));
+  ctx.route(/google-analytics\.com|googletagmanager\.com|doubleclick\.net|connect\.facebook\.net|facebook\.com\/tr|clarity\.ms|hotjar\./, r => r.abort());
+  ctx.on('page', p => p.on('console', m => { if (m.text().startsWith('[mspa-popup]')) escrever(m.text().replace('[mspa-popup]', 'Aviso do site ' )); }));
   return { chrome, rodar, ouvintes, dados };
 }
 
