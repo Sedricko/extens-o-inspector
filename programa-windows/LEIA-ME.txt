@@ -17,3 +17,10 @@ GRAVAR TUDO (para me mandar o relatorio)
 - Senhas e tokens nao sao gravados. Faca o que combinamos (entrar, filtrar seus fretes, apagar 1 ou 2 de teste).
 - Quando terminar, volte na janela preta e aperte ENTER. Ele cria relatorio-....txt e relatorio-....json na pasta. Mande os dois.
 - Nao use Gravar.bat e Iniciar.bat ao mesmo tempo (usam o mesmo perfil).
+
+NOVIDADES (v5)
+- Instalador: BotFretes-Setup.exe instala em C:\Users\SEU_USUARIO\AppData\Local\BotFretes, cria atalho na Area de Trabalho e no Menu Iniciar.
+- Meus Fretes e sempre aberto FILTRADO por voce ("Publicado por"). O bot confere, pela resposta da Central, que so vieram fretes seus. Se vier de outra pessoa, ele para sem apagar nada.
+- Login automatico: na primeira vez ele pergunta seu e-mail e senha da Central (fica so no config.json deste computador). Enter vazio = entrar voce mesmo.
+- "Apagar tudo" (config.json: "apagarTudo": true): antes de republicar, exclui todos os SEUS fretes ativos (pagina por pagina) e confere que sobrou zero. Nao roda se houver frete "Publicado" na planilha que nao esta para republicar, nem se o limite da rodada for menor que o numero de cargas.
+- Padroes do programa: fechar = "excluir", limite = 50, apagarTudo = true. Mude no config.json se quiser.

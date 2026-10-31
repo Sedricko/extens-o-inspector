@@ -1,6 +1,7 @@
 // Roda a MESMA logica da extensao (fretebras.js, linhas.js, sync.js) dentro do Node.
 // "chrome.*" aqui e um adaptador pequeno: guarda dados em arquivo e abre as paginas pelo Playwright.
 const fs = require('fs'), path = require('path'), vm = require('vm');
+const meus = require('./meus');
 
 const achar = nome => [`logica/${nome}`, `../${nome}`, `../scripts/${nome}`].map(p => path.join(__dirname, p)).find(fs.existsSync);
 
@@ -62,6 +63,20 @@ function criar({ ctx, arquivoDados, escrever = console.log }) {
   vm.createContext(sandbox);
   for (const f of ['fretebras.js', 'linhas.js', 'sync.js']) vm.runInContext(fs.readFileSync(achar(f), 'utf8'), sandbox, { filename: f });
   const rodar = codigo => vm.runInContext(codigo, sandbox);
+
+  // No programa, Meus Fretes e sempre aberto FILTRADO por voce (meus.js) e a contagem vem do numero exato da Central.
+  sandbox.fbApagarMeus = base => meus.apagarMeus(ctx, base, escrever);
+  sandbox.fbContarAtivos = (base = rodar('FB.site')) => meus.contarMeus(ctx, base);
+  sandbox.fbClose = async (codigo, acao, base = rodar('FB.site')) => {
+    const { page, est } = await meus.abrirMeus(ctx, base);
+    const id = ++seq; paginas.set(id, page);
+    try {
+      await meus.filtrarMeus(page, est);
+      const r = await chrome.tabs.sendMessage(id, { cmd: 'close', arg: { codigo, acao } });
+      if (r.ok) await chrome.tabs.remove(id);
+      return r;
+    } catch (e) { await chrome.tabs.remove(id); throw e; }
+  };
 
   // fb_publisher.js roda dentro de cada pagina (como content script no mundo principal da pagina)
   ctx.addInitScript(fs.readFileSync(achar('fb_publisher.js'), 'utf8'));

@@ -1,6 +1,6 @@
 // Sincronizacao com a planilha (aplicativo da web do Apps Script): publica o que esta PUBLICAR, fecha o que esta
 // FECHAR/EXCLUIR/DESATIVAR e devolve STATUS/CODIGO. Manual (pagina de sincronizacao) e automatica (alarme).
-const SYNC_PADRAO = { url: '', token: '', fechar: 'desativar', auto: false, minutos: 15, limite: 5, pausaSeg: 10, janela: 'aba', abas: 1, conferirZero: true };
+const SYNC_PADRAO = { url: '', token: '', fechar: 'desativar', auto: false, minutos: 15, limite: 5, pausaSeg: 10, janela: 'aba', abas: 1, conferirZero: true, apagarTudo: false };
 const syncCfg = async () => ({ ...SYNC_PADRAO, ...((await chrome.storage.local.get('syncCfg')).syncCfg || {}) });
 
 // Varias abas trabalham ao mesmo tempo: cada assunto (log, estado, fila, historico, memoria) grava um de cada vez, para um nao apagar o outro.
@@ -65,7 +65,7 @@ async function syncPlano() {
   const feitas = (await chrome.storage.local.get('lotePublicados')).lotePublicados || {};
   const plano = planoDeSync(linhas, feitas, cfg);
   await syncBadge(plano.acoes.length); // contador no icone: quantas acoes faltam
-  return { plano, total: linhas.length };
+  return { plano, total: linhas.length, linhas };
 }
 
 // Contador no icone da extensao (fila de acoes). O "!" de pausa tem prioridade.
@@ -163,7 +163,7 @@ async function syncAuto(base = FB.site) {
   await syncEstadoSet({ rodando: Date.now() });
   const feitos = [];
   try {
-    const { plano } = await syncPlano();
+    const { plano, linhas } = await syncPlano();
     await syncEscrever(plano.escritas);
     const lista = plano.acoes.slice(0, cfg.limite);
     const registrar = (acao, r) => { feitos.push(r); return syncLog(`linha ${acao.linha} ${acao.tipo}: ${r.pulada ? 'pulada (' + r.motivo + ')' : r.status + (r.codigo ? ' ' + r.codigo : '')}`, r.status === 'ERRO' ? 'erro' : 'info'); };
@@ -174,6 +174,16 @@ async function syncAuto(base = FB.site) {
       const r = await syncAcao(a, base); // se o login/site cair aqui, lanca e a etapa 2 nem comeca
       await registrar(a, r);
       if (a.tipo === 'renovar' && r.continua) etapa2.push(acaoDepoisDeFechar(a));
+    }
+
+    // APAGAR TUDO (so no programa Windows): exclui todos os SEUS fretes ativos de uma vez, antes de republicar.
+    // So roda se ha REPUBLICAR na fila, se cabe tudo no limite da rodada e se nenhum frete "Publicado" ficaria sem republicar.
+    if (cfg.apagarTudo && typeof fbApagarMeus === 'function' && etapa2.some(a => linhaNorm(a.statusOriginal) === 'republicar')) {
+      const pend = plano.acoes.filter(a => a.tipo === 'renovar' || linhaNorm(a.statusOriginal) === 'republicar').length;
+      const vivas = linhas.filter(l => /^publicad/.test(linhaNorm(l.status)) && l.codigo).length;
+      if (vivas) await syncLog(`Nao apaguei tudo: ha ${vivas} frete(s) "Publicado" na planilha que nao estao para republicar (use RENOVAR/republicarAbertas para todos).`, 'erro');
+      else if (pend > cfg.limite) await syncLog(`Nao apaguei tudo: ${pend} cargas para republicar e o limite da rodada e ${cfg.limite}. Aumente o limite.`, 'erro');
+      else { const r = await fbApagarMeus(base); await syncLog(`Apaguei ${r.apagados} frete(s) seu(s) antes de republicar.`); }
     }
 
     // CONFERENCIA - antes de publicar de novo (REPUBLICAR/RENOVAR), nao pode restar nenhum frete ativo na conta (conta todas as paginas)
