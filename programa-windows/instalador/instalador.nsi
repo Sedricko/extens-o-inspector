@@ -19,10 +19,9 @@ Section "Instalar"
   StrCmp $0 "0" ok
     MessageBox MB_ICONEXCLAMATION "Nao consegui terminar a instalacao das pecas (codigo $0). Veja os detalhes na janela e rode Instalar.bat dentro de $INSTDIR."
   ok:
-  CreateShortCut "$DESKTOP\${NOME}.lnk" "$INSTDIR\Iniciar.bat" "" "" 0 SW_SHOWMINIMIZED
+  CreateShortCut "$DESKTOP\${NOME}.lnk" "$SYSDIR\wscript.exe" "$\"$INSTDIR\Iniciar.vbs$\"" "$SYSDIR\shell32.dll" 13
   CreateDirectory "$SMPROGRAMS\${NOME}"
-  CreateShortCut "$SMPROGRAMS\${NOME}\${NOME}.lnk" "$INSTDIR\Iniciar.bat"
-  CreateShortCut "$SMPROGRAMS\${NOME}\Gravar (relatorio).lnk" "$INSTDIR\Gravar.bat"
+  CreateShortCut "$SMPROGRAMS\${NOME}\${NOME}.lnk" "$SYSDIR\wscript.exe" "$\"$INSTDIR\Iniciar.vbs$\"" "$SYSDIR\shell32.dll" 13
   CreateShortCut "$SMPROGRAMS\${NOME}\Desinstalar.lnk" "$INSTDIR\Desinstalar.exe"
   WriteUninstaller "$INSTDIR\Desinstalar.exe"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\BotFretes" "DisplayName" "${NOME}"

@@ -1,3 +1,18 @@
+BOT DE FRETES PARA WINDOWS 11 (um programa, com painel)
+
+INSTALAR: dê dois cliques em BotFretes-Setup.exe e clique em Install. Ele baixa o que falta (Node.js e navegador do bot) e cria o atalho "Bot de Fretes" na Area de Trabalho.
+USAR: abra o atalho. Aparece o painel (janela do programa). Na primeira vez preencha as Configuracoes:
+  - Link do app da web (termina em /exec) e senha da planilha;
+  - E-mail e senha da Central da Fretebras (opcional: login automatico). Ficam so neste computador, em config.json.
+  Clique em Salvar. O bot abre o navegador dele (minimizado) e comeca sozinho.
+PAINEL: status, fila, historico, botoes (Sincronizar agora, Pausar, Retomar, Mostrar navegador, Gravar relatorio) e mensagens.
+SESSAO: o bot guarda o login no perfil dele, reabre a Central a cada 10 min para renovar a sessao e so tenta entrar sozinho 1 vez a cada 30 min.
+  A Fretebras pede aprovacao no celular a cada login NOVO. Aprove uma vez e nao feche o programa: quanto mais ele fica aberto, menos pedidos de aprovacao.
+GRAVAR RELATORIO: botao "Gravar relatorio" (faca o que quiser no navegador) e "Parar e salvar relatorio". Gera relatorio-....txt e .json na pasta do bot.
+SE ALGO FALHAR: veja o arquivo bot.log na pasta (C:\Users\SEU_USUARIO\AppData\Local\BotFretes) ou rode Iniciar.bat para ver a janela de mensagens.
+Nao compartilhe a pasta do bot: ela guarda sua sessao e suas senhas.
+
+--- Detalhes tecnicos (versoes anteriores) ---
 BOT DE FRETES PARA WINDOWS 11 (programa proprio, sem extensao)
 
 1) Dois cliques em Instalar.bat (so na primeira vez). Se pedir, feche e rode de novo.

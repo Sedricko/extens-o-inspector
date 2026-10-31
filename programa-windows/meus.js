@@ -93,8 +93,8 @@ async function apagarMeus(ctx, base, escrever = () => {}) {
 }
 
 // Login automatico (so se usuario e senha estiverem no config.json; senao entre voce mesmo na janela).
-async function entrar(ctx, base, cfg) {
-  const page = ctx.pages().find(p => !p.isClosed()) || await ctx.newPage();
+async function entrar(ctx, base, cfg, pagina) {
+  const page = pagina || ctx.pages().find(p => !p.isClosed()) || await ctx.newPage();
   await page.goto(base + 'meus-fretes').catch(() => {});
   const ativos = page.getByText(/^Ativos/).first(), user = page.locator('#username, input[name=username]').first();
   for (let i = 0; i < 120; i++) {
@@ -109,8 +109,13 @@ async function entrar(ctx, base, cfg) {
   const manter = page.locator('input[name=rememberMe]').first();
   if (await manter.count()) await manter.check({ force: true }).catch(() => {});
   await page.locator('#kc-login, button[type=submit], input[type=submit]').first().click();
-  try { await ativos.waitFor({ timeout: 45000 }); } catch { return 'falhou'; }
-  return 'entrou';
+  // ate 3 min: pode haver aprovacao no celular. Senha errada aparece como aviso na propria tela de login.
+  const erro = page.locator('#input-error, .alert-error, .kc-feedback-text, [class*=error]').filter({ hasText: /./ }).first();
+  for (const t0 = Date.now(); Date.now() - t0 < 180000; await sleep(1000)) {
+    if (await ativos.isVisible().catch(() => false)) return 'entrou';
+    if (await user.isVisible().catch(() => false) && await erro.isVisible().catch(() => false)) return 'senha-errada';
+  }
+  return 'falhou';
 }
 
 module.exports = { abrirMeus, filtrarMeus, contarMeus, apagarMeus, entrar };
