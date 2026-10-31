@@ -205,3 +205,34 @@ async function fbClose(codigo, acao, base = FB.site) {
   if (r.ok) chrome.tabs.remove(tab.id).catch(() => {}); else await fbRestaurar(aberta);
   return r;
 }
+
+// Quantos fretes ATIVOS existem na conta (o numero "Ativos: N" de Meus Fretes soma todas as paginas).
+// A tela mostra um numero provisorio enquanto a lista carrega: so vale quando duas leituras seguidas dao o mesmo valor.
+let FB_ESPERA_ZERO = 3000; // ms entre leituras; so o teste automatico muda
+async function fbContarAtivos(base = FB.site) {
+  const aberta = await fbAbrir(base + 'meus-fretes');
+  const tab = aberta.tab;
+  const ask = (cmd, arg) => chrome.tabs.sendMessage(tab.id, { cmd, arg });
+  const dorme = ms => new Promise(r => setTimeout(r, ms));
+  let ready = false;
+  for (let i = 0; i < FB_TENTATIVAS && !ready; i++) {
+    ready = !!((await ask('close-ready').catch(() => null)) || {}).ready;
+    if (!ready) await dorme(500);
+  }
+  if (!ready) {
+    const err = new Error('Meus Fretes nao carregou (a Central pediu login?). A aba ficou aberta.');
+    err.global = true;
+    await fbRestaurar(aberta);
+    throw err;
+  }
+  let anterior = null, ativos = null;
+  for (let i = 0; i < 8 && ativos === null; i++) {
+    await dorme(FB_ESPERA_ZERO);
+    const r = await ask('count').catch(() => null);
+    const n = r && typeof r.ativos === 'number' ? r.ativos : null;
+    if (n !== null && n === anterior) ativos = n; // duas leituras iguais seguidas
+    anterior = n;
+  }
+  chrome.tabs.remove(tab.id).catch(() => {});
+  return { ativos };
+}

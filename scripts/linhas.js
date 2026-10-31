@@ -145,3 +145,7 @@ function planoDeSync(linhas, feitas, cfg) {
   }
   return { acoes, escritas };
 }
+
+// A rodada tem duas etapas. ETAPA 1 (um processo so, uma aba por vez): fechar tudo que tem que ser fechado, inclusive o frete antigo de um RENOVAR.
+// So quando a etapa 1 termina comeca a ETAPA 2 (varias abas ao mesmo tempo): publicar. Depois de fechar o antigo, o RENOVAR vira uma publicacao comum.
+const acaoDepoisDeFechar = a => ({ ...a, tipo: 'publicar', statusOriginal: 'REPUBLICAR' });

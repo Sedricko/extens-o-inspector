@@ -83,3 +83,11 @@ Republicar e renovar (versao 0.9.6)
   ativarRenovacaoAutomatica liga o gatilho (a cada FR_RENOVAR_HORAS: 1, 2, 4, 6, 8 ou 12 horas). Cada renovacao leva ~1,5 min: escolha um
   intervalo maior que (numero de cargas abertas x 1,5 min).
 - Depois de mudar o fretes-tudo.gs: Implantar > Gerenciar implantacoes > lapis > Nova versao (o doPost grava a hora de publicacao).
+
+Rodada em duas etapas, varias abas e conferencia (versao 0.9.7)
+- ETAPA 1 (um processo so, uma aba por vez): fecha tudo que tem que ser fechado (FECHAR/EXCLUIR/DESATIVAR e o frete antigo de cada RENOVAR).
+  O RENOVAR, depois de fechar o antigo, vira REPUBLICAR na planilha.
+- CONFERENCIA: antes de publicar de novo (REPUBLICAR/RENOVAR), le o total "Ativos: N" de Meus Fretes (soma todas as paginas) e so segue se for 0
+  (duas leituras seguidas iguais). Se sobrar algum, nao publica nada e avisa no Registro. Desligue na pagina Sincronizar se a conta tem fretes que a
+  planilha nao controla.
+- ETAPA 2 (varias abas ao mesmo tempo, 1 a 5 na pagina Sincronizar): publica; cada aba pega a proxima carga da fila.

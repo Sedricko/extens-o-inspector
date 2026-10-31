@@ -199,9 +199,10 @@
   window.__MSPA_FILL = fillAndTell;
   window.addEventListener('message', async ev => {
     const d = ev.data;
-    if (ev.source !== window || !d || d.mspa !== 'req' || !/^(fill(-ready)?|publish|close(-ready)?)$/.test(d.cmd)) return;
+    if (ev.source !== window || !d || d.mspa !== 'req' || !/^(fill(-ready)?|publish|close(-ready)?|count)$/.test(d.cmd)) return;
     const res = d.cmd === 'fill-ready' ? { ready: !!find('Local da coleta') } : d.cmd === 'publish' ? await publish()
       : d.cmd === 'close-ready' ? { ready: !!find({ start: 'Ativos' }) }
+      : d.cmd === 'count' ? (() => { const el = find({ start: 'Ativos' }); const m = el && norm(el.innerText).match(/^ativos:?\s*(\d+)/); return { ativos: m ? Number(m[1]) : null }; })()
       : d.cmd === 'close' ? await closeFreight(d.arg).catch(e => ({ ok: false, error: String(e.message || e) }))
       : await fillAndTell(d.arg); // pronto = o formulario ja esta na tela
     window.postMessage({ mspa: 'res', id: d.id, res }, '*');

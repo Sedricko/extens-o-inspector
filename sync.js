@@ -1,15 +1,25 @@
 // Sincronizacao com a planilha (aplicativo da web do Apps Script): publica o que esta PUBLICAR, fecha o que esta
 // FECHAR/EXCLUIR/DESATIVAR e devolve STATUS/CODIGO. Manual (pagina de sincronizacao) e automatica (alarme).
-const SYNC_PADRAO = { url: '', token: '', fechar: 'desativar', auto: false, minutos: 15, limite: 5, pausaSeg: 10, janela: 'aba' };
+const SYNC_PADRAO = { url: '', token: '', fechar: 'desativar', auto: false, minutos: 15, limite: 5, pausaSeg: 10, janela: 'aba', abas: 1, conferirZero: true };
 const syncCfg = async () => ({ ...SYNC_PADRAO, ...((await chrome.storage.local.get('syncCfg')).syncCfg || {}) });
 
-async function syncLog(txt, nivel = 'info') {
+// Varias abas trabalham ao mesmo tempo: cada assunto (log, estado, fila, historico, memoria) grava um de cada vez, para um nao apagar o outro.
+const syncFilas = {};
+const syncSerial = (nome, fn) => (syncFilas[nome] = (syncFilas[nome] || Promise.resolve()).then(fn, fn));
+
+const syncLog = (txt, nivel = 'info') => syncSerial('log', async () => {
   const { syncLogs = [] } = await chrome.storage.local.get('syncLogs');
   syncLogs.unshift({ t: Date.now(), txt, nivel });
   await chrome.storage.local.set({ syncLogs: syncLogs.slice(0, 80) });
-}
+});
 const syncEstado = async () => (await chrome.storage.local.get('syncEstado')).syncEstado || {};
-const syncEstadoSet = async patch => { const e = { ...(await syncEstado()), ...patch }; await chrome.storage.local.set({ syncEstado: e }); return e; };
+const syncEstadoSet = patch => syncSerial('estado', async () => { const e = { ...(await syncEstado()), ...patch }; await chrome.storage.local.set({ syncEstado: e }); return e; });
+// Lembra o que a extensao publicou (protege contra publicar duas vezes se a gravacao na planilha falhar).
+const syncMemoria = (chave, valor) => syncSerial('memoria', async () => {
+  const { lotePublicados: f = {} } = await chrome.storage.local.get('lotePublicados');
+  f[chave] = valor;
+  await chrome.storage.local.set({ lotePublicados: f });
+});
 
 // Chama o aplicativo da web e, se a resposta nao for do nosso script, explica o que o Google respondeu.
 async function planilhaChamar(url, init) {
@@ -67,11 +77,11 @@ async function syncBadge(n) {
 }
 
 // Historico de fretes publicados/fechados (mais novo primeiro).
-async function syncHistoria(item) {
+const syncHistoria = item => syncSerial('historico', async () => {
   const { syncHistorico = [] } = await chrome.storage.local.get('syncHistorico');
   syncHistorico.unshift({ t: Date.now(), ...item });
   await chrome.storage.local.set({ syncHistorico: syncHistorico.slice(0, 300) });
-}
+});
 
 async function syncEscrever(escritas) {
   const cfg = await syncCfg();
@@ -82,8 +92,10 @@ async function syncEscrever(escritas) {
 // Executa UMA acao, desconta do contador do icone e registra no historico.
 async function syncAcao(acao, base = FB.site) {
   const r = await syncAcaoFeita(acao, base); // lanca se o login/site cair: nesse caso nada e descontado nem registrado
-  const { syncFila = 0 } = await chrome.storage.local.get('syncFila');
-  await syncBadge(Math.max(0, syncFila - 1));
+  if (!r.continua) await syncSerial('fila', async () => { // o antigo fechado de um RENOVAR ainda tem a publicacao pela frente: nao desconta
+    const { syncFila = 0 } = await chrome.storage.local.get('syncFila');
+    await syncBadge(Math.max(0, syncFila - 1));
+  });
   if ((await syncEstado()).rodando) await syncEstadoSet({ rodando: Date.now() }); // "estou vivo": uma rodada longa nao e dada como travada
   if (!r.pulada) await syncHistoria({
     tipo: acao.tipo, linha: acao.linha, status: r.status, nota: r.texto || '',
@@ -96,37 +108,35 @@ async function syncAcao(acao, base = FB.site) {
 async function syncAcaoFeita(acao, base) {
   const cfg = await syncCfg();
   const renovar = acao.tipo === 'renovar';
-  const publicar = acao.tipo === 'publicar' || renovar;
+  const publicar = acao.tipo === 'publicar';
   const conf = { origem: acao.row.origem, destino: acao.row.destino };
   const reservado = renovar ? 'RENOVANDO...' : publicar ? 'PUBLICANDO...' : 'FECHANDO...';
-  const aviso = renovar ? ' (o frete antigo ja foi fechado)' : '';
   const gravar = (status, codigo) => syncGravarFinal(cfg, { linha: acao.linha, status, ...(codigo !== undefined && { codigo }), esperado: [reservado], confere: conf });
 
   const c = await planilhaPost(cfg, [{ linha: acao.linha, status: reservado, esperado: [acao.statusOriginal], confere: conf }]);
   if (!c.gravadas.includes(acao.linha)) return { pulada: true, motivo: 'a linha mudou na planilha ou outra sincronizacao ja pegou' };
 
   try {
-    if (renovar) { // primeiro fecha o frete antigo; se nao conseguir, nao publica (evita duplicar)
+    if (renovar) { // etapa 1: fecha o frete antigo. Se nao conseguir, nao publica (evita duplicar). Se conseguir, a linha vira REPUBLICAR e a etapa 2 a publica.
       const f = await fbClose(acao.codigo, acao.modo, base);
       if (!f.ok) { await gravar('ERRO ao fechar o antigo: ' + String(f.error).slice(0, 150)); return { status: 'ERRO', texto: f.error }; }
+      await gravar('REPUBLICAR', '');
+      return { status: 'Antigo fechado', texto: f.resultado, continua: true };
     }
     if (publicar) {
       const r = await fbFillTest(base, true, acao.row);
       const chave = linhaChave(acao.row);
-      const { lotePublicados: feitas = {} } = await chrome.storage.local.get('lotePublicados');
       if (r.incerta) {
-        feitas[chave] = { code: null, incerta: true, quando: Date.now() };
-        await chrome.storage.local.set({ lotePublicados: feitas });
+        await syncMemoria(chave, { code: null, incerta: true, quando: Date.now() });
         await gravar('INCERTA - conferir', '');
         return { status: 'INCERTA', texto: r.error };
       }
       if (r.ok) {
-        feitas[chave] = { code: r.code || null, quando: Date.now() };
-        await chrome.storage.local.set({ lotePublicados: feitas }); // antes de gravar na planilha: se cair, nao republica
+        await syncMemoria(chave, { code: r.code || null, quando: Date.now() }); // antes de gravar na planilha: se cair, nao republica
         await gravar('Publicado', r.code || '');
         return { status: 'Publicado', codigo: r.code, notas: r.notes };
       }
-      await gravar('ERRO' + aviso + ': ' + String(r.error || 'falhou').slice(0, 150) + (r.step ? ` (passo ${r.step.slice(0, 60)})` : ''), '');
+      await gravar('ERRO: ' + String(r.error || 'falhou').slice(0, 150) + (r.step ? ` (passo ${r.step.slice(0, 60)})` : ''), '');
       return { status: 'ERRO', texto: r.error };
     }
     const r = await fbClose(acao.codigo, acao.modo, base);
@@ -155,12 +165,41 @@ async function syncAuto(base = FB.site) {
   try {
     const { plano } = await syncPlano();
     await syncEscrever(plano.escritas);
-    for (const [n, acao] of plano.acoes.slice(0, cfg.limite).entries()) {
-      const r = await syncAcao(acao, base);
-      await syncLog(`linha ${acao.linha} ${acao.tipo}: ${r.pulada ? 'pulada (' + r.motivo + ')' : r.status + (r.codigo ? ' ' + r.codigo : '')}`, r.status === 'ERRO' ? 'erro' : 'info');
-      feitos.push(r);
-      if (acao.tipo !== 'fechar' && n < Math.min(plano.acoes.length, cfg.limite) - 1) await new Promise(res => setTimeout(res, cfg.pausaSeg * 1000));
+    const lista = plano.acoes.slice(0, cfg.limite);
+    const registrar = (acao, r) => { feitos.push(r); return syncLog(`linha ${acao.linha} ${acao.tipo}: ${r.pulada ? 'pulada (' + r.motivo + ')' : r.status + (r.codigo ? ' ' + r.codigo : '')}`, r.status === 'ERRO' ? 'erro' : 'info'); };
+
+    // ETAPA 1 - um processo so, uma aba por vez: fecha TUDO que tem que ser fechado antes de publicar qualquer coisa
+    const etapa2 = lista.filter(a => a.tipo === 'publicar');
+    for (const a of lista.filter(a => a.tipo !== 'publicar')) {
+      const r = await syncAcao(a, base); // se o login/site cair aqui, lanca e a etapa 2 nem comeca
+      await registrar(a, r);
+      if (a.tipo === 'renovar' && r.continua) etapa2.push(acaoDepoisDeFechar(a));
     }
+
+    // CONFERENCIA - antes de publicar de novo (REPUBLICAR/RENOVAR), nao pode restar nenhum frete ativo na conta (conta todas as paginas)
+    if (cfg.conferirZero && etapa2.some(a => linhaNorm(a.statusOriginal) === 'republicar')) {
+      const c = await fbContarAtivos(base);
+      if (c.ativos !== 0) {
+        await syncLog(c.ativos === null ? 'Nao consegui conferir quantos fretes ativos restam: nao publiquei nada nesta rodada.' : `Ainda ha ${c.ativos} frete(s) ativo(s) na Fretebras: nao publiquei nada. Feche-os (ou desligue a conferencia na pagina Sincronizar).`, 'erro');
+        etapa2.length = 0;
+      }
+    }
+
+    // ETAPA 2 - so depois: publica, com varias abas ao mesmo tempo (cada uma pega a proxima carga da fila)
+    let proxima = 0, parar = false;
+    const abas = Math.max(1, Math.min(5, Number(cfg.abas) || 1));
+    const trabalhador = async () => {
+      while (!parar && proxima < etapa2.length) {
+        const acao = etapa2[proxima++];
+        let r;
+        try { r = await syncAcao(acao, base); } catch (e) { parar = true; throw e; } // login/site caiu: ninguem pega acao nova
+        await registrar(acao, r);
+        if (proxima < etapa2.length) await new Promise(res => setTimeout(res, cfg.pausaSeg * 1000));
+      }
+    };
+    const fim = await Promise.allSettled(Array.from({ length: Math.min(abas, etapa2.length) }, trabalhador));
+    const falhou = fim.find(x => x.status === 'rejected');
+    if (falhou) throw falhou.reason; // espera todas terminarem antes de pausar
     if (plano.acoes.length > cfg.limite) await syncLog(`${plano.acoes.length - cfg.limite} acao(oes) ficaram para a proxima rodada (limite ${cfg.limite})`);
   } catch (e) {
     await syncLog('Sincronizacao automatica pausada: ' + (e.message || e), 'erro');

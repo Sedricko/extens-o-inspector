@@ -57,6 +57,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     'fb-publish-form': own && (() => fbFillTest(FB.site, true)),
     'fb-row': own && (() => fbFillTest(FB.site, !!msg.publish, msg.row)),
     'sync-plano': own && syncPlano,
+    'sync-ativos': own && (() => fbContarAtivos()),
     'sync-escrever': own && (() => syncEscrever(msg.escritas)),
     'sync-acao': own && (() => syncAcao(msg.acao)),
     'sync-agora': own && syncAuto,

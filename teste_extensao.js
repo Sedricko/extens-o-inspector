@@ -63,6 +63,7 @@ const FORM = `<!doctype html><meta charset="utf-8"><title>Criar frete</title><bo
 <script>
   // a Central recarrega a pagina uma vez no inicio (login); isso corta o preenchimento no meio
   if (!sessionStorage.getItem('r')) { sessionStorage.setItem('r', '1'); setTimeout(() => location.reload(), 1500); }
+  navigator.sendBeacon('/api/abre'); addEventListener('pagehide', () => navigator.sendBeacon('/api/fecha'));
   window.log = [];
   const lista = (inp, ul, nome) => inp.addEventListener('input', () => setTimeout(() => {
     ul.innerHTML = '<li>' + nome + '</li><li>Outra - XX</li>';
@@ -83,7 +84,7 @@ const FORM = `<!doctype html><meta charset="utf-8"><title>Criar frete</title><bo
   setTimeout(() => { carr.remove(); for (const b of document.querySelectorAll('.v')) b.dataset.on = ''; }, 2500);
   const voce = document.createElement('div'); voce.className = 'b'; voce.id = 'voce'; voce.setAttribute('aria-pressed', 'false'); voce.textContent = 'Você operacional2.go@trpoloni.com.br · (28) 98113-0644';
   voce.onclick = () => voce.setAttribute('aria-pressed', voce.getAttribute('aria-pressed') === 'false'); resto.append(voce);
-  pub.onclick = () => { log.push('PUBLICOU'); setTimeout(() => { document.body.innerHTML = '<h1>Frete publicado com alta exposição</h1><p>Frete SPGO-1770 · Goiânia - GO → São Paulo - SP</p>'; }, 500); };
+  pub.onclick = () => { log.push('PUBLICOU'); navigator.sendBeacon('/api/pub'); setTimeout(() => { document.body.innerHTML = '<h1>Frete publicado com alta exposição</h1><p>Frete SPGO-1770 · Goiânia - GO → São Paulo - SP</p>'; }, 500); };
 </script></body>`;
 
 // Meus Fretes falso: busca por codigo, caixa de selecao, barra Desativar/Excluir e confirmacao (como a recording mostrou).
@@ -110,6 +111,8 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
 
 (async () => {
   const fechou = [];
+  let ativosFake = 0, abertas = 0, maxAbertas = 0; // "Ativos: N" da Fretebras falsa e quantas paginas de formulario estao abertas ao mesmo tempo
+  const eventos = []; // ordem em que os fretes foram fechados e publicados
   let semFormulario = false;
   const linhasPlanilha = [];
   // planilha falsa = aplicativo da web do Apps Script (senha, leitura, reserva/escrita com "esperado" e "confere")
@@ -142,8 +145,11 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
   let formBody = FORM;
   const server = http.createServer((req, res) => {
     if (req.url === '/meus-fretes/cadastrar') { res.setHeader('content-type', 'text/html'); return res.end(semFormulario ? '<!doctype html><body>Entrar</body>' : formBody); }
-    if (req.url === '/meus-fretes') { res.setHeader('content-type', 'text/html'); return res.end(semFormulario ? '<!doctype html><body>Entrar</body>' : MEUS); }
-    if (req.url === '/api/fechou') { let b = ''; req.on('data', d => { b += d; }); req.on('end', () => { fechou.push(JSON.parse(b)); res.end('{}'); }); return; }
+    if (req.url === '/meus-fretes') { res.setHeader('content-type', 'text/html'); return res.end(semFormulario ? '<!doctype html><body>Entrar</body>' : MEUS.replace('Ativos: 3', 'Ativos: ' + ativosFake)); }
+    if (req.url === '/api/pub') { eventos.push('publicar'); return res.end('{}'); }
+    if (req.url === '/api/abre') { abertas++; maxAbertas = Math.max(maxAbertas, abertas); return res.end('{}'); }
+    if (req.url === '/api/fecha') { abertas--; return res.end('{}'); }
+    if (req.url === '/api/fechou') { let b = ''; req.on('data', d => { b += d; }); req.on('end', () => { fechou.push(JSON.parse(b)); eventos.push('fechar'); if (ativosFake > 0) ativosFake--; res.end('{}'); }); return; }
     if (req.url === '/api/frete') { res.setHeader('content-type', 'application/json'); return res.end('{"id":"SPMG-4BC4"}'); }
     if (req.url.startsWith('/app')) { res.setHeader('content-type', 'text/html'); return res.end(SPA); }
     if (req.url.startsWith('/api')) { res.setHeader('content-type', 'application/json'); return res.end('{"ok":true}'); }
@@ -408,7 +414,7 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
       L('JACAREI/SP', 'ATIBAIA/SP', 'PUBLICAR'),                // 8: igual a linha 4 (ja publicada)
       L('EXTREMA/MG', 'JACAREI/SP', ''),                        // 9: rascunho: nada
     );
-    const cfgSync = { url: `http://127.0.0.1:${planilha.address().port}/exec`, token: 't', fechar: 'desativar', auto: true, minutos: 15, limite: 2, pausaSeg: 0 };
+    const cfgSync = { url: `http://127.0.0.1:${planilha.address().port}/exec`, token: 't', fechar: 'desativar', auto: true, minutos: 15, limite: 2, pausaSeg: 0, conferirZero: false };
     fechou.length = 0;
     await sw.evaluate(async c => { await chrome.storage.local.remove(['lotePublicados', 'syncEstado', 'syncLogs']); await chrome.storage.local.set({ syncCfg: c }); FB.site = c.base; FB_TENTATIVAS = 6; }, { ...cfgSync, base });
     await new Promise(r => setTimeout(r, 300));
@@ -444,7 +450,7 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
     assert.strictEqual(linhasPlanilha[4].status, 'Excluido');
     assert.strictEqual(await sw.evaluate(() => chrome.action.getBadgeText({})), '', 'fila vazia: o contador some');
     const hist = (await sw.evaluate(() => chrome.storage.local.get('syncHistorico'))).syncHistorico;
-    assert.deepStrictEqual(hist.map(h => [h.tipo, h.status, h.codigo]).reverse().slice(0, 3), [['publicar', 'Publicado', 'SPGO-1770'], ['fechar', 'Desativado', 'MGMG-27DE'], ['fechar', 'Excluido', 'MGMG-3401']], 'historico em ordem');
+    assert.deepStrictEqual(hist.map(h => [h.tipo, h.status, h.codigo]).reverse().slice(0, 3), [['fechar', 'Desativado', 'MGMG-27DE'], ['publicar', 'Publicado', 'SPGO-1770'], ['fechar', 'Excluido', 'MGMG-3401']], 'historico em ordem: o que fecha vem antes do que publica na mesma rodada');
     assert.strictEqual(hist.find(h => h.tipo === 'publicar').frete, 'EXTREMA/MG → FRUTAL/MG');
     const antesJson = JSON.stringify(linhasPlanilha), n = fechou.length;
     await sw.evaluate(() => syncAuto());
@@ -472,7 +478,8 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
     let ren = linhasPlanilha[linhasPlanilha.length - 1];
     assert.deepStrictEqual([ren.status, ren.codigo], ['Publicado', 'SPGO-1770'], 'fechou o antigo e publicou de novo');
     assert.deepStrictEqual(fechou.slice(nFechou), [{ acao: 'Desativar', cod: 'MGMG-27DE' }], 'desativou o antigo antes de publicar');
-    assert.strictEqual((await sw.evaluate(() => chrome.storage.local.get('syncHistorico'))).syncHistorico[0].tipo, 'renovar');
+    const hRen = (await sw.evaluate(() => chrome.storage.local.get('syncHistorico'))).syncHistorico; // mais novo primeiro
+    assert.deepStrictEqual([hRen[1].tipo, hRen[1].status, hRen[0].tipo, hRen[0].status], ['renovar', 'Antigo fechado', 'publicar', 'Publicado'], 'renovar: primeiro fecha o antigo, depois publica');
     linhasPlanilha.pop();
     linhasPlanilha.push(L('EXTREMA/MG', 'FRUTAL/MG', 'RENOVAR', 'SPSP-26E9', { idcarga: 'ren2' })); // esse codigo aparece em 2 fretes: nao fecha
     await sw.evaluate(() => syncAuto());
@@ -481,6 +488,33 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
     linhasPlanilha.pop();
     const sem = await sw.evaluate(() => planoDeSync([{ linha: 2, status: 'RENOVAR', codigo: '', origem: 'A/MG', destino: 'B/MG' }], {}, {}));
     assert.strictEqual(sem.escritas[0].status, 'REPUBLICAR', 'RENOVAR sem codigo antigo vira REPUBLICAR');
+
+    // DUAS ETAPAS: fecha TUDO (um de cada vez) antes de publicar; so publica (varias abas) quando nao resta nenhum frete ativo
+    await sw.evaluate(async () => { FB_ESPERA_ZERO = 300; const c = (await chrome.storage.local.get('syncCfg')).syncCfg; await chrome.storage.local.set({ syncCfg: { ...c, abas: 3, limite: 10, conferirZero: true } }); });
+    const ini = linhasPlanilha.length;
+    linhasPlanilha.push(
+      L('EXTREMA/MG', 'FRUTAL/MG', 'RENOVAR', 'MGMG-27DE', { idcarga: 'd1' }), L('EXTREMA/MG', 'FRUTAL/MG', 'RENOVAR', 'MGMG-3401', { idcarga: 'd2' }),
+      L('EXTREMA/MG', 'FRUTAL/MG', 'PUBLICAR', '', { idcarga: 'd3' }), L('EXTREMA/MG', 'FRUTAL/MG', 'PUBLICAR', '', { idcarga: 'd4' }));
+    const sts = () => linhasPlanilha.slice(ini).map(r => r.status);
+    ativosFake = 4; eventos.length = 0; maxAbertas = 0; // a conta tem 4 ativos: os 2 que serao fechados e 2 que a planilha nao conhece
+    await sw.evaluate(() => syncAuto());
+    assert.deepStrictEqual(eventos, ['fechar', 'fechar'], 'etapa 1 fechou os 2 antigos e nao publicou nada');
+    assert.strictEqual(ativosFake, 2);
+    assert.deepStrictEqual(sts(), ['REPUBLICAR', 'REPUBLICAR', 'PUBLICAR', 'PUBLICAR'], 'ainda ha ativos: nada foi publicado, nem as cargas novas');
+    assert.ok((await sw.evaluate(() => chrome.storage.local.get('syncLogs'))).syncLogs.some(l => /Ainda ha 2 frete/.test(l.txt)));
+    ativosFake = 0; eventos.length = 0; maxAbertas = 0; // agora a conta zerou
+    await sw.evaluate(() => syncAuto());
+    assert.deepStrictEqual(sts(), ['Publicado', 'Publicado', 'Publicado', 'Publicado']);
+    assert.deepStrictEqual(eventos, ['publicar', 'publicar', 'publicar', 'publicar'], 'so publicou, nada foi fechado de novo');
+    assert.ok(maxAbertas >= 2, 'as abas trabalharam ao mesmo tempo (maximo ' + maxAbertas + ')');
+    assert.strictEqual(await sw.evaluate(() => chrome.action.getBadgeText({})), '', 'fila zerada');
+    // ordem completa numa rodada so: fecha antes de publicar
+    linhasPlanilha.push(L('EXTREMA/MG', 'FRUTAL/MG', 'RENOVAR', 'MGMG-27DE', { idcarga: 'd5' }), L('EXTREMA/MG', 'FRUTAL/MG', 'PUBLICAR', '', { idcarga: 'd6' }));
+    ativosFake = 1; eventos.length = 0;
+    await sw.evaluate(() => syncAuto());
+    assert.deepStrictEqual(eventos, ['fechar', 'publicar', 'publicar'], 'fechar vem antes de qualquer publicacao');
+    await sw.evaluate(async () => { const c = (await chrome.storage.local.get('syncCfg')).syncCfg; await chrome.storage.local.set({ syncCfg: { ...c, abas: 1, limite: 2, conferirZero: false } }); FB_ESPERA_ZERO = 3000; });
+    linhasPlanilha.length = ini;
 
     // login/site fora do ar: pausa o automatico e devolve a linha como estava
     linhasPlanilha.push(L('EXTREMA/MG', 'FRUTAL/MG', 'PUBLICAR', '', { idcarga: 'x9' })); // mesma rota da linha 2, outra carga

@@ -9,7 +9,7 @@ async function carregar() {
   const { syncCfg = {} } = await chrome.storage.local.get('syncCfg');
   $('url').value = syncCfg.url || ''; $('token').value = syncCfg.token || '';
   $('fechar').value = syncCfg.fechar || 'desativar'; $('auto').checked = !!syncCfg.auto;
-  $('janela').value = syncCfg.janela || 'aba'; $('minutos').value = syncCfg.minutos || 15; $('limite').value = syncCfg.limite || 5; $('pausa-seg').value = syncCfg.pausaSeg || 10;
+  $('janela').value = syncCfg.janela || 'aba'; $('abas').value = syncCfg.abas || 1; $('zero').checked = syncCfg.conferirZero !== false; $('minutos').value = syncCfg.minutos || 15; $('limite').value = syncCfg.limite || 5; $('pausa-seg').value = syncCfg.pausaSeg || 10;
   await atualizar();
 }
 async function atualizar() {
@@ -26,7 +26,7 @@ async function atualizar() {
   $('log').innerHTML = syncLogs.map(l => `<div class="${l.nivel === 'erro' ? 'err' : ''}">${new Date(l.t).toLocaleString('pt-BR')}  ${esc(l.txt)}</div>`).join('') || '<span class="mut">Nada ainda.</span>';
 }
 const cfgDaTela = () => ({ url: $('url').value.trim(), token: $('token').value.trim(), fechar: $('fechar').value, auto: $('auto').checked,
-  minutos: Math.max(1, +$('minutos').value || 15), limite: Math.max(1, +$('limite').value || 5), pausaSeg: Math.max(5, +$('pausa-seg').value || 10), janela: $('janela').value });
+  minutos: Math.max(1, +$('minutos').value || 15), limite: Math.max(1, +$('limite').value || 5), pausaSeg: Math.max(5, +$('pausa-seg').value || 10), janela: $('janela').value, abas: Math.max(1, Math.min(5, +$('abas').value || 1)), conferirZero: $('zero').checked });
 
 $('salvar').onclick = async () => { await chrome.storage.local.set({ syncCfg: cfgDaTela() }); $('teste').textContent = 'Salvo.'; };
 $('testar').onclick = async () => {
@@ -68,19 +68,45 @@ $('executar').onclick = async () => {
   rodando = true; parar = false; desenhar();
   try {
     if (plano.escritas.length) await send('sync-escrever', { escritas: plano.escritas });
-    for (const [n, acao] of plano.acoes.entries()) {
-      if (parar) { $('msg').textContent = 'Parado. O restante ficou na planilha como estava.'; break; }
-      const t = linhasTab[n];
-      t.situacao = 'em andamento…'; desenhar();
-      $('msg').textContent = `Ação ${n + 1} de ${plano.acoes.length}…`;
-      const r = await send('sync-acao', { acao });
-      if (r.error) { t.situacao = 'ERRO: ' + r.error; t.cls = 'err'; desenhar(); if (r.global) { $('msg').textContent = 'Parou: login ou site da Fretebras. A linha ficou como estava.'; break; } continue; }
-      t.situacao = r.pulada ? 'pulada: ' + r.motivo : r.status + (r.codigo ? ' ' + r.codigo : '') + (r.texto ? ' — ' + r.texto : '');
-      t.cls = r.status === 'ERRO' || r.status === 'INCERTA' ? 'err' : 'ok';
+    const itens = plano.acoes.map((acao, i) => ({ acao, t: linhasTab[i] }));
+    let parou = false;
+    const concluir = (x, r) => {
+      if (r.error) { x.t.situacao = 'ERRO: ' + r.error; x.t.cls = 'err'; if (r.global) { parou = true; $('msg').textContent = 'Parou: login ou site da Fretebras. A linha ficou como estava.'; } return; }
+      x.t.situacao = r.pulada ? 'pulada: ' + r.motivo : r.status + (r.codigo ? ' ' + r.codigo : '') + (r.texto ? ' — ' + r.texto : '');
+      x.t.cls = r.status === 'ERRO' || r.status === 'INCERTA' ? 'err' : 'ok';
+    };
+    // ETAPA 1 - um processo so, uma aba por vez: fecha TUDO antes de publicar qualquer coisa
+    const etapa2 = itens.filter(x => x.acao.tipo === 'publicar');
+    for (const x of itens.filter(x => x.acao.tipo !== 'publicar')) {
+      if (parar || parou) break;
+      x.t.situacao = 'fechando…'; desenhar(); $('msg').textContent = 'Etapa 1: fechando os fretes antigos, um de cada vez…';
+      const r = await send('sync-acao', { acao: x.acao });
+      concluir(x, r);
+      if (x.acao.tipo === 'renovar' && r.continua) { x.t.situacao = 'antigo fechado; aguardando a etapa de publicar…'; x.t.cls = ''; etapa2.push({ acao: acaoDepoisDeFechar(x.acao), t: x.t }); }
       desenhar();
-      if (acao.tipo !== 'fechar' && n < plano.acoes.length - 1) await pausa(cfg.pausaSeg * 1000);
-      if (n === plano.acoes.length - 1) $('msg').textContent = 'Terminou.';
     }
+    // CONFERENCIA - antes de publicar de novo, nao pode restar nenhum frete ativo na conta (conta todas as paginas)
+    if (cfg.conferirZero && !parar && !parou && etapa2.some(x => linhaNorm(x.acao.statusOriginal) === 'republicar')) {
+      $('msg').textContent = 'Conferindo se ainda resta algum frete ativo na Fretebras…';
+      const c = await send('sync-ativos');
+      if (c.error || c.ativos !== 0) {
+        parou = true;
+        $('msg').textContent = c.error ? 'Nao consegui conferir: ' + c.error : c.ativos === null ? 'Nao consegui conferir quantos fretes ativos restam: nada foi publicado.' : `Ainda há ${c.ativos} frete(s) ativo(s) na Fretebras: nada foi publicado. Feche-os ou desligue a conferência.`;
+      }
+    }
+    // ETAPA 2 - so depois: publica, com varias abas ao mesmo tempo
+    let proxima = 0;
+    const trabalhador = async () => {
+      while (!parar && !parou && proxima < etapa2.length) {
+        const x = etapa2[proxima++];
+        x.t.situacao = 'publicando…'; desenhar(); $('msg').textContent = `Etapa 2: publicando (${Math.min(proxima, etapa2.length)} de ${etapa2.length} iniciadas)…`;
+        concluir(x, await send('sync-acao', { acao: x.acao }));
+        desenhar();
+        if (proxima < etapa2.length) await pausa(cfg.pausaSeg * 1000);
+      }
+    };
+    if (!parar && !parou) await Promise.all(Array.from({ length: Math.min(cfg.abas, etapa2.length) }, trabalhador));
+    if (!parou) $('msg').textContent = parar ? 'Parado. O restante ficou na planilha como estava.' : 'Terminou.';
   } finally { await send('sync-fim'); rodando = false; desenhar(); atualizar(); }
 };
 $('parar').onclick = () => { parar = true; };
