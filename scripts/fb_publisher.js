@@ -161,11 +161,38 @@
     return { ok: true, code };
   };
 
+  const findAll = m => { const ok = test(m); return [...document.body.querySelectorAll('*')].filter(e => !e.closest(OURS) && visible(e) && ok(norm(e.innerText))); };
+  const rotulo = e => norm([e.labels && e.labels[0] && e.labels[0].innerText, e.getAttribute('aria-label'), e.title].filter(Boolean).join(' '));
+
+  // Em Meus Fretes: busca o codigo, marca SO o frete com esse codigo e desativa/exclui. Qualquer duvida: nao faz nada.
+  const closeFreight = async ({ codigo, acao }) => {
+    const verbo = acao === 'excluir' ? 'Excluir' : 'Desativar';
+    const cod = norm(codigo);
+    const input = await waitFor(() => inputOf('Buscar frete'), 'o campo Buscar frete');
+    setValue(input, codigo);
+    const caixas = () => [...document.querySelectorAll('input[type=checkbox]')].filter(e => rotulo(e).includes(cod));
+    await sleep(2500); // a lista recarrega depois de digitar
+    try { await waitFor(() => caixas().length, '', 6000); } catch { return { ok: true, resultado: 'Nao encontrado' }; }
+    if (caixas().length !== 1) return { ok: false, error: `a busca por ${codigo} achou ${caixas().length} fretes (esperava 1): nao fiz nada` };
+    const caixa = caixas()[0];
+    if (!caixa.checked) click(caixa);
+    await sleep(500);
+    click(await waitFor(() => find(verbo), `o botao ${verbo}`));
+    await waitFor(() => find({ re: `^${norm(verbo)} frete` }), `a confirmacao "${verbo} frete"`);
+    const botoes = findAll(verbo);
+    click(botoes[botoes.length - 1]); // o ultimo "Excluir/Desativar" da tela e o do aviso de confirmacao
+    await waitFor(() => find({ re: 'foi (excluido|desativado)' }), 'a mensagem de que o frete foi ' + (verbo === 'Excluir' ? 'excluido' : 'desativado'), 20000);
+    return { ok: true, resultado: verbo === 'Excluir' ? 'Excluido' : 'Desativado' };
+  };
+
   window.__MSPA_FILL = fillAndTell;
   window.addEventListener('message', async ev => {
     const d = ev.data;
-    if (ev.source !== window || !d || d.mspa !== 'req' || !/^(fill(-ready)?|publish)$/.test(d.cmd)) return;
-    const res = d.cmd === 'fill-ready' ? { ready: !!find('Local da coleta') } : d.cmd === 'publish' ? await publish() : await fillAndTell(d.arg); // pronto = o formulario ja esta na tela
+    if (ev.source !== window || !d || d.mspa !== 'req' || !/^(fill(-ready)?|publish|close(-ready)?)$/.test(d.cmd)) return;
+    const res = d.cmd === 'fill-ready' ? { ready: !!find('Local da coleta') } : d.cmd === 'publish' ? await publish()
+      : d.cmd === 'close-ready' ? { ready: !!find({ start: 'Ativos' }) }
+      : d.cmd === 'close' ? await closeFreight(d.arg).catch(e => ({ ok: false, error: String(e.message || e) }))
+      : await fillAndTell(d.arg); // pronto = o formulario ja esta na tela
     window.postMessage({ mspa: 'res', id: d.id, res }, '*');
   });
 })();

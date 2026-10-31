@@ -52,3 +52,21 @@ Lote pela planilha (versao 0.8)
   Se clicou em Publicar e nao confirmou, marca INCERTA e nunca repete: confira em Meus Fretes.
 - No fim, "Copiar STATUS e CODIGO" e cole de volta na planilha (celula STATUS da primeira linha de dados).
 - Suportado por enquanto: VALOR "A combinar", LONA "Nao", tipo Carga Geral, exposicao Plus (padrao do site), peso inteiro ou decimal.
+
+Sincronizacao automatica com a planilha (versao 0.9)
+Fluxo: aba Base (seu sistema) -> aba FRETES -> extensao publica na Fretebras -> codigo volta para a aba FRETES -> quando a carga fecha,
+o STATUS vira FECHAR -> a extensao desativa (ou exclui) na Fretebras.
+- Apps Script (mesmo projeto do seu codigo): cole planilha/fretes-config.gs e planilha/fretes-importar.gs (nao usam onOpen nem nomes do seu codigo).
+  Rode uma vez "instalarMenuFretes"; menu Fretes: Configurar aba FRETES, Importar cargas da Base agora, importacao automatica (10 min),
+  Publicar sozinho LIGAR/DESLIGAR, Gerar senha da integracao.
+- Regra de carga ativa (a mesma do seu Autoresponder): StatusOferta ATIVA, Operacao diferente de so FROTA, nao cancelada, nao FINALIZADA,
+  nao fechada (aba Mot com Situacao FECHADO, ou fx_StatusCarga EM PROCESSO) e coleta nao vencida (24 h). A chave e o idCarga (coluna IDCARGA).
+  Da aba Mot so le idCarga e Situacao; dados de motorista e de cliente nunca saem de la.
+- Carga nova entra com STATUS REVISAR (publicacao automatica desligada) ou PUBLICAR (ligada). Ate 10 novas por rodada.
+- Implantar o aplicativo da web: Implantar > Nova implantacao > App da Web > Executar como: Eu > Acesso: Qualquer pessoa.
+  Cole o endereco (/exec) e a senha na pagina "Sincronizar com a planilha" da extensao.
+- STATUS que a extensao entende: PUBLICAR, FECHAR (usa a opcao da pagina: desativar ou excluir), DESATIVAR, EXCLUIR. Sem a palavra, nada acontece.
+  Ela reserva a linha (PUBLICANDO.../FECHANDO...) antes de agir, escreve Publicado + CODIGO / Desativado / Excluido / Nao encontrado /
+  INCERTA - conferir / ERRO: ... e nunca republica linha com CODIGO.
+- Manual: pagina "Sincronizar com a planilha" > Ver o que vai acontecer > Executar. Automatico: marque "Sincronizar sozinha" (so com o Chrome aberto);
+  no maximo N acoes por rodada; se o login da Fretebras cair, pausa e pede "Retomar".

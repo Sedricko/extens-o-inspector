@@ -81,10 +81,62 @@ const FORM = `<!doctype html><meta charset="utf-8"><title>Criar frete</title><bo
   pub.onclick = () => { log.push('PUBLICOU'); setTimeout(() => { document.body.innerHTML = '<h1>Frete publicado com alta exposição</h1><p>Frete SPGO-1770 · Goiânia - GO → São Paulo - SP</p>'; }, 500); };
 </script></body>`;
 
+// Meus Fretes falso: busca por codigo, caixa de selecao, barra Desativar/Excluir e confirmacao (como a recording mostrou).
+const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><body>
+<div>Ativos: 3</div><input id="q" placeholder="Buscar frete"><label><input type="checkbox" id="all"></label>
+<div id="lista"></div><div id="barra" hidden><button>Desativar</button><button>Excluir</button></div><div id="modal"></div><div id="toast"></div>
+<script>
+  const CODIGOS = ['MGMG-27DE', 'MGMG-3401', 'SPSP-26E9', 'SPSP-26E9X'];
+  const desenha = f => { lista.innerHTML = CODIGOS.filter(c => c.toLowerCase().includes(f.toLowerCase())).map(c => '<div><label><input type="checkbox" class="f"> ' + c + '</label> Extrema, MG</div>').join(''); };
+  desenha('');
+  q.addEventListener('input', () => setTimeout(() => desenha(q.value), 300));
+  lista.addEventListener('change', () => { barra.hidden = !lista.querySelector('.f:checked'); });
+  for (const b of barra.querySelectorAll('button')) b.onclick = () => {
+    const acao = b.textContent;
+    modal.innerHTML = '<div><h3>' + acao + ' frete</h3><p>Voce nao vera mais esse frete. Tem certeza?</p><button>' + acao + '</button></div>';
+    modal.querySelector('button').onclick = () => {
+      const cod = lista.querySelector('.f:checked').parentElement.textContent.trim();
+      fetch('/api/fechou', { method: 'POST', body: JSON.stringify({ acao, cod }) }).then(() => { // como o site: so avisa depois da resposta
+        toast.textContent = acao === 'Excluir' ? 'O frete foi excluído com sucesso.' : 'O frete ' + cod + ' foi desativado.';
+      });
+    };
+  };
+</script></body>`;
+
 (async () => {
+  const fechou = [];
+  let semFormulario = false;
+  const linhasPlanilha = [];
+  // planilha falsa = aplicativo da web do Apps Script (senha, leitura, reserva/escrita com "esperado" e "confere")
+  const nrm = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+  const planilha = http.createServer((req, res) => {
+    const cors = { 'access-control-allow-origin': '*', 'content-type': 'application/json' };
+    const url = new URL(req.url, 'http://x');
+    let corpo = '';
+    req.on('data', d => { corpo += d; });
+    req.on('end', () => {
+      if (req.method === 'GET') {
+        if (url.searchParams.get('token') !== 't') return res.writeHead(200, cors).end(JSON.stringify({ ok: false, erro: 'senha invalida' }));
+        return res.writeHead(200, cors).end(JSON.stringify({ ok: true, linhas: linhasPlanilha.map((l, i) => ({ linha: i + 2, ...l })).filter(l => l.origem || l.status) }));
+      }
+      const b = JSON.parse(corpo);
+      if (b.token !== 't') return res.writeHead(200, cors).end(JSON.stringify({ ok: false, erro: 'senha invalida' }));
+      const gravadas = [], ignoradas = [];
+      for (const u of b.atualizacoes) {
+        const l = linhasPlanilha[u.linha - 2];
+        if (!l) { ignoradas.push({ linha: u.linha }); continue; }
+        if (u.esperado && !u.esperado.map(nrm).includes(nrm(l.status))) { ignoradas.push({ linha: u.linha, motivo: 'STATUS mudou' }); continue; }
+        if (u.confere && (nrm(l.origem) !== nrm(u.confere.origem) || nrm(l.destino) !== nrm(u.confere.destino))) { ignoradas.push({ linha: u.linha }); continue; }
+        l.status = u.status; if (u.codigo !== undefined) l.codigo = u.codigo; gravadas.push(u.linha);
+      }
+      res.writeHead(200, cors).end(JSON.stringify({ ok: true, gravadas, ignoradas }));
+    });
+  }).listen(0);
   let formBody = FORM;
   const server = http.createServer((req, res) => {
-    if (req.url === '/meus-fretes/cadastrar') { res.setHeader('content-type', 'text/html'); return res.end(formBody); }
+    if (req.url === '/meus-fretes/cadastrar') { res.setHeader('content-type', 'text/html'); return res.end(semFormulario ? '<!doctype html><body>Entrar</body>' : formBody); }
+    if (req.url === '/meus-fretes') { res.setHeader('content-type', 'text/html'); return res.end(semFormulario ? '<!doctype html><body>Entrar</body>' : MEUS); }
+    if (req.url === '/api/fechou') { let b = ''; req.on('data', d => { b += d; }); req.on('end', () => { fechou.push(JSON.parse(b)); res.end('{}'); }); return; }
     if (req.url === '/api/frete') { res.setHeader('content-type', 'application/json'); return res.end('{"id":"SPMG-4BC4"}'); }
     if (req.url.startsWith('/app')) { res.setHeader('content-type', 'text/html'); return res.end(SPA); }
     if (req.url.startsWith('/api')) { res.setHeader('content-type', 'application/json'); return res.end('{"ok":true}'); }
@@ -311,6 +363,99 @@ const FORM = `<!doctype html><meta charset="utf-8"><title>Criar frete</title><bo
     assert.ok(!bad.ok && bad.step.includes('Local da coleta') && /nao achei a opcao/.test(bad.error), JSON.stringify(bad));
     for (const p of ctx.pages().filter(p => p.url().endsWith('/cadastrar'))) await p.close();
 
+    formBody = FORM; // o caso de erro acima deixou o formulario quebrado
+    // ---- Fechar: desativar/excluir pelo codigo em Meus Fretes
+    const antesFechar = ctx.pages().length;
+    assert.deepStrictEqual(await sw.evaluate(b => fbClose('MGMG-27DE', 'desativar', b), base), { ok: true, resultado: 'Desativado' });
+    assert.deepStrictEqual(await sw.evaluate(b => fbClose('MGMG-3401', 'excluir', b), base), { ok: true, resultado: 'Excluido' });
+    assert.deepStrictEqual(fechou, [{ acao: 'Desativar', cod: 'MGMG-27DE' }, { acao: 'Excluir', cod: 'MGMG-3401' }]);
+    assert.deepStrictEqual(await sw.evaluate(b => fbClose('XXXX-0000', 'excluir', b), base), { ok: true, resultado: 'Nao encontrado' });
+    assert.strictEqual(fechou.length, 2, 'codigo inexistente: nao faz nada');
+    const dup = await sw.evaluate(b => fbClose('SPSP-26E9', 'excluir', b), base); // "SPSP-26E9" aparece em 2 fretes: nao arrisca
+    assert.ok(dup.ok === false && /achou 2 fretes/.test(dup.error), JSON.stringify(dup));
+    assert.strictEqual(fechou.length, 2);
+    for (const p of ctx.pages().filter(p => p.url() === base + 'meus-fretes')) await p.close();
+    assert.strictEqual(ctx.pages().length, antesFechar, 'fechou so as abas que abriu');
+
+    // ---- Plano da sincronizacao (STATUS manda; nunca republica)
+    const L = (o, d, st = '', cod = '', extra = {}) => ({ origem: o, destino: d, produto: 'SYNC TESTE', valor: 'A combinar', peso: '25 Ton', paletes: '28 PAL', veiculo: 'Carreta', carroceria: 'Sider', rastreada: 'Sim', lona: 'Não', pagamento: 'Outro', observacoes: '', status: st, codigo: cod, ...extra });
+    linhasPlanilha.push(
+      L('EXTREMA/MG', 'FRUTAL/MG', 'PUBLICAR'),                 // 2: publica
+      L('EXTREMA', 'FRUTAL/MG', 'PUBLICAR'),                    // 3: erro de validacao
+      L('JACAREI/SP', 'ATIBAIA/SP', 'Publicado', 'AB-1'),       // 4: ja publicada
+      L('EXTREMA/MG', 'ITABIRITO/MG', 'FECHAR', 'MGMG-27DE'),   // 5: desativa (padrao)
+      L('EXTREMA/MG', 'SERRA/ES', 'EXCLUIR', 'MGMG-3401'),      // 6: exclui
+      L('EXTREMA/MG', 'VIANA/ES', 'FECHAR'),                    // 7: sem codigo
+      L('JACAREI/SP', 'ATIBAIA/SP', 'PUBLICAR'),                // 8: igual a linha 4 (ja publicada)
+      L('EXTREMA/MG', 'JACAREI/SP', ''),                        // 9: rascunho: nada
+    );
+    const cfgSync = { url: `http://127.0.0.1:${planilha.address().port}/exec`, token: 't', fechar: 'desativar', auto: true, minutos: 15, limite: 2, pausaSeg: 0 };
+    fechou.length = 0;
+    await sw.evaluate(async c => { await chrome.storage.local.remove(['lotePublicados', 'syncEstado', 'syncLogs']); await chrome.storage.local.set({ syncCfg: c }); FB.site = c.base; FB_TENTATIVAS = 6; }, { ...cfgSync, base });
+    await new Promise(r => setTimeout(r, 300));
+    assert.strictEqual((await sw.evaluate(() => chrome.alarms.get('sync-auto'))).periodInMinutes, 15, 'alarme criado com o automatico ligado');
+    const { plano } = await sw.evaluate(() => syncPlano());
+    assert.deepStrictEqual(plano.acoes.map(a => [a.linha, a.tipo, a.modo || '']), [[2, 'publicar', ''], [5, 'fechar', 'desativar'], [6, 'fechar', 'excluir']]);
+    assert.deepStrictEqual(plano.escritas.map(e => [e.linha, e.status.slice(0, 40)]),
+      [[3, 'ERRO: ORIGEM deve ser CIDADE/UF'], [7, 'ERRO: falta o CODIGO para fechar'], [8, 'ERRO: igual a linha 4, que ja esta publi']]);
+
+    // reserva: se a linha mudar na planilha depois do plano, a acao nao acontece
+    linhasPlanilha[0].status = 'rascunho';
+    const pulou = await sw.evaluate(a => syncAcao(a), plano.acoes[0]);
+    assert.ok(pulou.pulada, JSON.stringify(pulou));
+    linhasPlanilha[0].status = 'PUBLICAR';
+
+    // rodada automatica: no maximo 2 acoes por vez (limite), reserva e devolve STATUS/CODIGO
+    await sw.evaluate(() => syncAuto());
+    assert.deepStrictEqual([linhasPlanilha[0].status, linhasPlanilha[0].codigo], ['Publicado', 'SPGO-1770']);
+    assert.strictEqual(linhasPlanilha[3].status, 'Desativado');
+    assert.strictEqual(linhasPlanilha[4].status, 'EXCLUIR', 'ficou para a proxima rodada');
+    assert.match(linhasPlanilha[1].status, /^ERRO: ORIGEM/);
+    assert.match(linhasPlanilha[6].status, /^ERRO: igual a linha 4/);
+    await sw.evaluate(() => syncAuto());
+    assert.strictEqual(linhasPlanilha[4].status, 'Excluido');
+    const antesJson = JSON.stringify(linhasPlanilha), n = fechou.length;
+    await sw.evaluate(() => syncAuto());
+    assert.strictEqual(JSON.stringify(linhasPlanilha), antesJson, 'terceira rodada: nada novo, nada repetido');
+    assert.strictEqual(fechou.length, n);
+    assert.deepStrictEqual(fechou.map(f => f.cod), ['MGMG-27DE', 'MGMG-3401']);
+
+    // a mesma linha (mesmo conteudo) voltando a PUBLICAR sem codigo nunca republica: a extensao lembra
+    linhasPlanilha[0].status = 'PUBLICAR'; linhasPlanilha[0].codigo = '';
+    await sw.evaluate(() => syncAuto());
+    assert.deepStrictEqual([linhasPlanilha[0].status, linhasPlanilha[0].codigo], ['Publicado', 'SPGO-1770'], 'reconciliou com a memoria, sem publicar');
+
+    // login/site fora do ar: pausa o automatico e devolve a linha como estava
+    linhasPlanilha.push(L('EXTREMA/MG', 'FRUTAL/MG', 'PUBLICAR', '', { idcarga: 'x9' })); // mesma rota da linha 2, outra carga
+    semFormulario = true;
+    await sw.evaluate(() => syncAuto());
+    assert.strictEqual(linhasPlanilha[8].status, 'PUBLICAR', 'liberada para tentar de novo');
+    assert.strictEqual((await sw.evaluate(() => syncEstado())).pausado, true);
+    assert.deepStrictEqual(await sw.evaluate(() => syncAuto()), { motivo: 'pausado' });
+    semFormulario = false;
+    await sw.evaluate(() => syncRetomar());
+    assert.strictEqual((await sw.evaluate(() => syncEstado())).pausado, false);
+    await sw.evaluate(() => syncAuto());
+    assert.strictEqual(linhasPlanilha[8].status, 'Publicado');
+    assert.ok((await sw.evaluate(() => chrome.storage.local.get('syncLogs'))).syncLogs.some(l => /pausada/.test(l.txt)));
+    // desligar o automatico remove o alarme
+    await sw.evaluate(async () => { await chrome.storage.local.set({ syncCfg: { ...(await chrome.storage.local.get('syncCfg')).syncCfg, auto: false } }); });
+    await new Promise(r => setTimeout(r, 300));
+    assert.strictEqual(await sw.evaluate(() => chrome.alarms.get('sync-auto')), undefined);
+
+    // pagina de sincronizacao: previa pela planilha (nao executa nada)
+    linhasPlanilha.push(L('EXTREMA/MG', 'SERRA/ES', 'PUBLICAR', '', { produto: 'OUTRO TESTE' }));
+    const pg = await ctx.newPage();
+    await pg.goto(`chrome-extension://${sw.url().split('/')[2]}/sync/sync.html`);
+    await pg.waitForFunction(() => document.querySelector('#url').value.includes('127.0.0.1'));
+    await pg.click('#previa');
+    await pg.waitForFunction(() => !/^(|Lendo a planilha…)$/.test(document.querySelector('#msg').textContent), null, { timeout: 15000 }).catch(async () => { throw new Error('msg=' + await pg.textContent('#msg') + ' | teste=' + await pg.textContent('#teste')); });
+    assert.match(await pg.textContent('#msg'), /ação\(ões\)/, await pg.textContent('#msg'));
+    assert.match(await pg.textContent('#tab'), /EXTREMA\/MG → SERRA\/ES/);
+    assert.strictEqual(await pg.isDisabled('#executar'), false);
+    await pg.close();
+    await sw.evaluate(() => { FB.site = 'https://novacentral.fretebras.com.br/'; FB_TENTATIVAS = 80; });
+
     // outro site nao consegue mandar sessao falsa nem publicar
     const antes = (await sw.evaluate(async () => (await chrome.storage.session.get('fb')).fb)).refresh;
     await app.evaluate(() => window.postMessage({ mspa: 'session', token: { access_token: 'X', refresh_token: 'X', expires_in: 1, refresh_expires_in: 1 } }, '*'));
@@ -362,8 +507,8 @@ const FORM = `<!doctype html><meta charset="utf-8"><title>Criar frete</title><bo
     assert.strictEqual(await lote.isDisabled('#publicar'), true);
     await lote.close();
 
-    console.log('OK: scan, React Fiber, rede (mascara), export, painel, gravador, export grande, sessao e publicacao Fretebras, lote sem duplicar');
+    console.log('OK: scan, React Fiber, rede (mascara), export, painel, gravador, export grande, sessao e publicacao Fretebras, lote sem duplicar, fechar, sincronizacao manual e automatica');
   } finally {
-    await ctx.close(); server.close();
+    await ctx.close(); server.close(); planilha.close();
   }
 })().catch(e => { console.error(e); process.exit(1); });

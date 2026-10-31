@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sincronizar com a planilha</title>
+<style>
+  :root { --bg: #fff; --fg: #111; --mut: #666; --bd: #ddd; --ok: #15803d; --err: #b91c1c; --pri: #2563eb; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #16181d; --fg: #eee; --mut: #9aa; --bd: #333; } }
+  body { font: 14px system-ui, sans-serif; background: var(--bg); color: var(--fg); margin: 0 auto; max-width: 1000px; padding: 16px; }
+  h1 { font-size: 20px; margin: 0 0 4px; } h2 { font-size: 15px; margin: 18px 0 6px; }
+  p, .mut { color: var(--mut); margin: 4px 0 10px; }
+  label { display: block; margin: 8px 0 2px; }
+  input[type=text], input[type=password], input[type=url], select, input[type=number] { font: inherit; background: transparent; color: var(--fg); border: 1px solid var(--bd); border-radius: 6px; padding: 6px 8px; box-sizing: border-box; }
+  input[type=url], input[type=password] { width: 100%; }
+  input[type=number] { width: 70px; }
+  .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+  button { font: inherit; padding: 6px 12px; border: 1px solid var(--bd); border-radius: 6px; background: transparent; color: var(--fg); cursor: pointer; }
+  button.pri { background: var(--pri); border-color: var(--pri); color: #fff; }
+  button:disabled { opacity: .45; cursor: default; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border-bottom: 1px solid var(--bd); padding: 6px 8px; text-align: left; vertical-align: top; }
+  .ok { color: var(--ok); } .err { color: var(--err); }
+  .aviso { border: 1px solid var(--err); border-radius: 6px; padding: 8px 10px; color: var(--err); margin: 10px 0; }
+  #log { font: 12px monospace; max-height: 220px; overflow: auto; border: 1px solid var(--bd); border-radius: 6px; padding: 6px 8px; }
+</style>
+</head>
+<body>
+  <h1>Sincronizar com a planilha</h1>
+  <p>A planilha manda: <b>PUBLICAR</b> publica; <b>FECHAR</b>, <b>DESATIVAR</b> ou <b>EXCLUIR</b> (com o CÓDIGO) tira o frete da Fretebras. Linha com CÓDIGO nunca é publicada de novo. Sem a palavra no STATUS, nada acontece.</p>
+
+  <div id="pausa" class="aviso" hidden>Sincronização automática pausada: <span id="motivo"></span> <button id="retomar">Retomar</button></div>
+
+  <h2>Ligação</h2>
+  <label for="url">Endereço do aplicativo da web (termina em /exec)</label>
+  <input id="url" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+  <label for="token">Senha da integração (menu Fretes &gt; Gerar senha da integração)</label>
+  <input id="token" type="password" autocomplete="off">
+  <label for="fechar">FECHAR faz o quê?</label>
+  <select id="fechar"><option value="desativar">Desativar (dá para reverter)</option><option value="excluir">Excluir (definitivo)</option></select>
+  <label><input id="auto" type="checkbox"> Sincronizar sozinha a cada <input id="minutos" type="number" min="1" max="240" value="15"> min, com no máximo <input id="limite" type="number" min="1" max="30" value="5"> ações por vez (só com o Chrome aberto)</label>
+  <label>Intervalo entre publicações <input id="pausa-seg" type="number" min="5" max="120" value="10"> s</label>
+  <div class="bar"><button id="salvar" class="pri">Salvar</button><button id="testar">Testar a ligação</button><span id="teste"></span></div>
+
+  <h2>Sincronizar agora</h2>
+  <div class="bar"><button id="previa">Ver o que vai acontecer</button><button id="executar" class="pri" disabled>Executar</button><button id="parar" disabled>Parar depois da atual</button><span id="msg" role="status"></span></div>
+  <table>
+    <thead><tr><th>Linha</th><th>Ação</th><th>Frete</th><th>Situação</th></tr></thead>
+    <tbody id="tab"></tbody>
+  </table>
+
+  <h2>Histórico</h2>
+  <div id="log"></div>
+  <script src="../scripts/linhas.js"></script>
+  <script src="sync.js"></script>
+</body>
+</html>

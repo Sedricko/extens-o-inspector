@@ -1,4 +1,4 @@
-importScripts('fretebras.js', 'scripts/linhas.js');
+importScripts('fretebras.js', 'scripts/linhas.js', 'sync.js');
 
 // Junta os passos gravados (um por chave no storage) numa linha do tempo; "final" apaga depois de juntar.
 async function recording(id, final) {
@@ -45,7 +45,7 @@ function download(msg, reply) {
 
 // Fretebras: a sessao so e aceita vinda da Central; publicar so do popup ou da pagina do lote (nunca de um site).
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
-  if (sender.id !== chrome.runtime.id || !/^fb-/.test(msg.cmd)) return;
+  if (sender.id !== chrome.runtime.id || !/^(fb|sync)-/.test(msg.cmd)) return;
   const fromSite = sender.tab && sender.url && sender.url.startsWith(FB.site);
   const own = (sender.url || '').startsWith(chrome.runtime.getURL('')) || !sender.tab; // popup ou pagina da extensao
   const run = {
@@ -56,8 +56,24 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     'fb-fill': own && (() => fbFillTest()),
     'fb-publish-form': own && (() => fbFillTest(FB.site, true)),
     'fb-row': own && (() => fbFillTest(FB.site, !!msg.publish, msg.row)),
+    'sync-plano': own && syncPlano,
+    'sync-escrever': own && (() => syncEscrever(msg.escritas)),
+    'sync-acao': own && (() => syncAcao(msg.acao)),
+    'sync-agora': own && syncAuto,
+    'sync-retomar': own && syncRetomar,
+    'sync-inicio': own && (async () => { // trava para a rodada automatica nao rodar junto com a manual
+      const e = await syncEstado();
+      if (e.rodando && Date.now() - e.rodando < 30 * 60e3) throw new Error('Outra sincronizacao esta rodando.');
+      await syncEstadoSet({ rodando: Date.now() });
+    }),
+    'sync-fim': own && (() => syncEstadoSet({ rodando: 0, ultima: Date.now() })),
   }[msg.cmd];
   if (!run) return;
-  run().then(r => reply(r || { ok: true }), e => reply({ error: String(e.message || e) }));
+  run().then(r => reply(r || { ok: true }), e => reply({ error: String(e.message || e), global: !!e.global }));
   return true;
 });
+
+// Rodada automatica: o alarme acorda a extensao enquanto o Chrome estiver aberto.
+chrome.alarms.onAlarm.addListener(a => { if (a.name === 'sync-auto') syncAuto(); });
+chrome.storage.onChanged.addListener(c => { if (c.syncCfg) syncAlarme(); });
+syncAlarme(); // os alarmes podem sumir quando o Chrome reinicia: recria sempre que a extensao acorda

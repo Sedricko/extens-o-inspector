@@ -7,7 +7,7 @@ const LINHA_COLUNAS = {
   origem: ['origem'], destino: ['destino'], produto: ['produto'], valor: ['valor'], peso: ['peso'], paletes: ['paletes'],
   veiculo: ['veiculo'], carroceria: ['carroceria'], rastreada: ['rastreada', 'rastreador'], lona: ['lona'],
   pagamento: ['pagamento'], observacoes: ['observacoes', 'observacao', 'obs'], especie: ['especie'],
-  status: ['status', 'situacao'], codigo: ['codigo', 'codigodofrete'],
+  status: ['status', 'situacao'], codigo: ['codigo', 'codigodofrete'], idcarga: ['idcarga'],
 };
 const CARROCERIAS = ['Caçamba', 'Grade Baixa', 'Graneleiro', 'Plataforma', 'Prancha', 'Baú', 'Baú Frigorífico', 'Baú Refrigerado', 'Sider',
   'Apenas Cavalo', 'Bug Porta Container', 'Cavaqueira', 'Cegonheiro', 'Gaiola', 'Hopper', 'Munck', 'Silo', 'Tanque'];
@@ -45,8 +45,8 @@ const linhaCidade = t => {
 
 // Ja publicada pela planilha (coluna CODIGO preenchida ou STATUS "Publicado").
 const linhaJaPublicada = l => !!(l.codigo || /^publicad/.test(linhaNorm(l.status)));
-// Identifica o frete pelo conteudo (sem STATUS/CODIGO): a mesma linha colada de novo gera a mesma chave.
-const linhaChave = l => JSON.stringify(['origem', 'destino', 'produto', 'peso', 'paletes', 'veiculo', 'carroceria', 'rastreada', 'lona', 'pagamento', 'valor', 'observacoes', 'especie'].map(k => linhaNorm(l[k])));
+// Identifica o frete: pelo IDCARGA, se a linha tem; senao pelo conteudo (sem STATUS/CODIGO).
+const linhaChave = l => l.idcarga ? 'id:' + linhaNorm(l.idcarga) : JSON.stringify(['origem', 'destino', 'produto', 'peso', 'paletes', 'veiculo', 'carroceria', 'rastreada', 'lona', 'pagamento', 'valor', 'observacoes', 'especie'].map(k => linhaNorm(l[k])));
 
 // -> { passos, erros: [] }  (erros vazio = pode publicar)
 function linhaParaPassos(l) {
@@ -91,4 +91,46 @@ function linhaParaPassos(l) {
       { type: 'toggle', text: { start: 'Plus Alta exposição' } },
     ],
   };
+}
+
+// Linha vinda do aplicativo da web da planilha ({linha, origem, ...}) -> mesmas chaves das colunas conhecidas.
+function linhaDeObjeto(o) {
+  const r = {};
+  for (const [k, v] of Object.entries(o)) {
+    const c = Object.keys(LINHA_COLUNAS).find(n => LINHA_COLUNAS[n].includes(linhaNorm(k).replace(/[^a-z]/g, ''))) || k;
+    r[c] = c === 'linha' ? v : v == null ? '' : String(v).trim(); // o numero da linha continua numero
+  }
+  return r;
+}
+
+const SYNC_FECHAR = ['fechar', 'fechado', 'excluir', 'desativar'];
+
+// O que fazer com cada linha: so age quando o STATUS tem a palavra (PUBLICAR / FECHAR / EXCLUIR / DESATIVAR).
+// -> { acoes: [{tipo, linha, ...}], escritas: [{linha, status, codigo?, esperado, confere}] }  (escritas = so atualiza a planilha)
+function planoDeSync(linhas, feitas, cfg) {
+  const acoes = [], escritas = [];
+  const jaPublicadas = new Map(); // conteudo -> linha, das que ja tem codigo
+  for (const l of linhas) if (linhaJaPublicada(l) && !SYNC_FECHAR.includes(linhaNorm(l.status))) jaPublicadas.set(linhaChave(l), l.linha);
+  const vistas = new Map();
+  const esc = (l, status, codigo) => ({ linha: l.linha, status, ...(codigo !== undefined && { codigo }), esperado: [l.status], confere: { origem: l.origem, destino: l.destino } });
+
+  for (const l of linhas) {
+    const st = linhaNorm(l.status);
+    if (st === 'publicar') {
+      const chave = linhaChave(l), f = feitas[chave];
+      if (l.codigo) { escritas.push(esc(l, 'Publicado')); continue; }                  // ja tem codigo: nunca republica
+      if (f) { escritas.push(f.incerta ? esc(l, 'INCERTA - conferir') : esc(l, 'Publicado', f.code || '')); continue; }
+      if (jaPublicadas.has(chave)) { escritas.push(esc(l, `ERRO: igual a linha ${jaPublicadas.get(chave)}, que ja esta publicada`)); continue; }
+      if (vistas.has(chave)) { escritas.push(esc(l, `ERRO: igual a linha ${vistas.get(chave)}`)); continue; }
+      vistas.set(chave, l.linha);
+      const { erros } = linhaParaPassos(l);
+      if (erros.length) { escritas.push(esc(l, 'ERRO: ' + erros.join('; '))); continue; }
+      acoes.push({ tipo: 'publicar', linha: l.linha, row: l, statusOriginal: l.status });
+    } else if (SYNC_FECHAR.includes(st)) {
+      if (!l.codigo) { escritas.push(esc(l, 'ERRO: falta o CODIGO para fechar')); continue; }
+      const modo = st === 'excluir' ? 'excluir' : st === 'desativar' ? 'desativar' : (cfg && cfg.fechar) || 'desativar';
+      acoes.push({ tipo: 'fechar', linha: l.linha, codigo: l.codigo, modo, row: l, statusOriginal: l.status });
+    }
+  }
+  return { acoes, escritas };
 }

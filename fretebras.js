@@ -136,6 +136,8 @@ async function fbDeleteTest() {
 
 // Preenche o formulario "Criar frete" numa aba em segundo plano a partir de uma linha da planilha (padrao: LINHA_PADRAO).
 // A aba fica aberta, sem tomar o foco; com publish=true clica em Publicar, le o codigo e fecha so essa aba.
+let FB_TENTATIVAS = 80; // x 500 ms; so o teste automatico muda
+
 async function fbFillTest(base = FB.site, publish = false, row = null) { // base: so o teste automatico muda
   const { passos, erros } = linhaParaPassos(row || LINHA_PADRAO);
   if (erros.length) throw new Error('Linha invalida: ' + erros.join('; '));
@@ -145,7 +147,7 @@ async function fbFillTest(base = FB.site, publish = false, row = null) { // base
   // Abrir o endereco direto passa pelo login da Fretebras e a pagina recarrega: se isso cortar a conversa, tenta de novo.
   for (let attempt = 0; attempt < 4; attempt++) {
     let ready = false;
-    for (let i = 0; i < 80 && !ready; i++) { // espera o formulario aparecer
+    for (let i = 0; i < FB_TENTATIVAS && !ready; i++) { // espera o formulario aparecer
       ready = !!((await ask('fill-ready').catch(() => null)) || {}).ready;
       if (!ready) await new Promise(r => setTimeout(r, 500));
     }
@@ -160,5 +162,27 @@ async function fbFillTest(base = FB.site, publish = false, row = null) { // base
       return { ...r, ...p, incerta: !!p.clicou && !p.ok }; // clicou e nao confirmou: pode ter saido
     } catch (e) { last = e; }
   }
-  throw new Error('Nao consegui preencher: ' + (last ? last.message : 'o formulario nao apareceu (a Central pediu login?).') + ' A aba ficou aberta em segundo plano.');
+  const err = new Error('Nao consegui preencher: ' + (last ? last.message : 'o formulario nao apareceu (a Central pediu login?).') + ' A aba ficou aberta em segundo plano.');
+  err.global = !last; // formulario nunca apareceu: problema de login/site, nao da linha
+  throw err;
+}
+
+// Desativa ou exclui na Fretebras o frete com esse CODIGO (aba em segundo plano; fecha so se deu certo).
+async function fbClose(codigo, acao, base = FB.site) {
+  const tab = await chrome.tabs.create({ url: base + 'meus-fretes', active: false });
+  const ask = (cmd, arg) => chrome.tabs.sendMessage(tab.id, { cmd, arg });
+  let ready = false;
+  for (let i = 0; i < FB_TENTATIVAS && !ready; i++) {
+    ready = !!((await ask('close-ready').catch(() => null)) || {}).ready;
+    if (!ready) await new Promise(r => setTimeout(r, 500));
+  }
+  if (!ready) {
+    const err = new Error('Meus Fretes nao carregou (a Central pediu login?). A aba ficou aberta em segundo plano.');
+    err.global = true;
+    throw err;
+  }
+  let r;
+  try { r = await ask('close', { codigo, acao }); } catch (e) { throw new Error('perdi a conversa com a pagina ao fechar ' + codigo + ': confira em Meus Fretes'); }
+  if (r.ok) chrome.tabs.remove(tab.id).catch(() => {});
+  return r;
 }
