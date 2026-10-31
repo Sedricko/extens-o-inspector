@@ -21,8 +21,8 @@ function criar({ ctx, arquivoDados, escrever = console.log }) {
   });
   const hora = t => new Date(t).toLocaleTimeString('pt-BR');
   const mostrar = o => { // o que a extensao mostra no painel, aqui vai para a tela
-    if (o.syncLogs && o.syncLogs[0]) escrever(`[${hora(o.syncLogs[0].t)}] ${o.syncLogs[0].txt}`);
-    if (o.syncHistorico && o.syncHistorico[0]) { const h = o.syncHistorico[0]; escrever(`[${hora(h.t)}] ${h.tipo} linha ${h.linha}: ${h.status} ${h.codigo || ''} ${h.frete || ''}`); }
+    if (o.syncLogs && o.syncLogs[0]) escrever(`[${hora(o.syncLogs[0].t)}] ${o.syncLogs[0].txt}`, o.syncLogs[0].nivel);
+    if (o.syncHistorico && o.syncHistorico[0]) { const h = o.syncHistorico[0]; escrever(`[${hora(h.t)}] ${h.tipo} linha ${h.linha}: ${h.status} ${h.codigo || ''} ${h.frete || ''}`, /ERRO|INCERTA/.test(h.status) ? 'erro' : 'info'); }
     if (typeof o.syncFila === 'number') escrever(`Fila: ${o.syncFila} frete(s)`);
   };
 

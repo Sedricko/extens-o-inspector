@@ -5,6 +5,7 @@ const { criar } = require('./nucleo');
 const { entrar } = require('./meus');
 const { criarPainel } = require('./painel');
 const gravar = require('./gravar');
+const { avisar } = require('./avisos');
 
 const SITE = 'https://novacentral.fretebras.com.br/';
 const pasta = process.env.BOT_PASTA || __dirname; // o teste usa outra pasta
@@ -14,7 +15,7 @@ const urlOk = u => /^https:\/\/script\.google(usercontent)?\.com\/.*\/exec(\?.*)
 
 const estado = { fase: 'iniciando', motivo: '', pausadoUsuario: false, erroPausa: false };
 const logs = [];
-const log = t => { const l = `[${new Date().toLocaleTimeString('pt-BR')}] ${t}`; logs.unshift(l); logs.length = Math.min(logs.length, 150); try { fs.appendFileSync(arqLog, l + '\n'); } catch {} };
+const log = (t, nivel) => { if (nivel === 'erro') avisar('Bot de Fretes: erro', t); const l = `[${new Date().toLocaleTimeString('pt-BR')}] ${t}`; logs.unshift(l); logs.length = Math.min(logs.length, 150); try { fs.appendFileSync(arqLog, l + '\n'); } catch {} };
 
 let cfg = { ...PADRAO, ...(fs.existsSync(arqCfg) ? JSON.parse(fs.readFileSync(arqCfg, 'utf8')) : {}) };
 const configurado = () => urlOk(cfg.url) && !!cfg.token;
@@ -37,7 +38,7 @@ async function garanteLogin() { // entra sozinho (se tem login salvo) ou pede pa
   if (r === 'ja-logado' || r === 'entrou') return true;
   estado.fase = 'login';
   estado.motivo = r === 'senha-errada' ? 'O e-mail ou a senha da Central estão incorretos. Corrija nas Configurações ou entre você mesmo na janela do navegador.' : r === 'falhou' ? 'O login automático não terminou. Se a Fretebras pediu autorização no celular, aprove; senão entre você mesmo na janela do navegador.' : 'Entre na Central na janela do navegador (só na primeira vez).';
-  await janela('normal'); log(estado.motivo);
+  await janela('normal'); log(estado.motivo); avisar('Bot de Fretes: preciso de você', estado.motivo);
   await aguardaLogin(); await janela('minimized');
   return true;
 }
@@ -48,7 +49,7 @@ async function iniciarBot() {
   iniciando = true; estado.fase = 'iniciando'; estado.motivo = 'Abrindo o navegador do bot...';
   try {
     ctx = await chromium.launchPersistentContext(path.join(pasta, 'perfil'), { headless: false, channel: 'chromium', viewport: null, args: ['--start-maximized'] });
-    ctx.on('close', () => { if (ctx && estado.fase !== 'parado' && estado.fase !== 'gravando') { log('O navegador do bot foi fechado.'); ctx = null; app = null; estado.fase = 'parado'; estado.motivo = 'O navegador do bot foi fechado. Salve as configurações ou reabra o programa.'; } });
+    ctx.on('close', () => { if (ctx && estado.fase !== 'parado' && estado.fase !== 'gravando') { log('O navegador do bot foi fechado.'); ctx = null; app = null; estado.fase = 'parado'; estado.motivo = 'O navegador do bot foi fechado. Salve as configurações ou reabra o programa.'; avisar('Bot de Fretes: parou', estado.motivo); } });
     app = criar({ ctx, arquivoDados: path.join(pasta, 'dados.json'), escrever: log });
     await app.chrome.storage.local.set({ syncCfg: { ...cfg, auto: true } });
     await app.rodar('syncRetomar()');
@@ -56,7 +57,7 @@ async function iniciarBot() {
     estado.motivo = ''; await garanteLogin();
     estado.fase = 'rodando'; estado.motivo = ''; estado.erroPausa = false; log('Login ok. O bot está rodando.');
     agendar(); rodada();
-  } catch (e) { log('Erro ao iniciar: ' + e.message); estado.fase = 'parado'; estado.motivo = 'Erro ao iniciar: ' + e.message; ctx = null; }
+  } catch (e) { log('Erro ao iniciar: ' + e.message, 'erro'); estado.fase = 'parado'; estado.motivo = 'Erro ao iniciar: ' + e.message; ctx = null; }
   finally { iniciando = false; }
 }
 
@@ -68,7 +69,7 @@ function agendar() {
 
 async function manterSessao() {
   if (!ctx || emRodada || estado.fase !== 'rodando') return;
-  try { if (!(await entrar(ctx, SITE, cfgLogin(), sessao)).match(/logado|entrou/)) { estado.fase = 'login'; estado.motivo = 'A sessão caiu: entre na janela do navegador.'; await janela('normal'); await aguardaLogin(); await janela('minimized'); estado.fase = 'rodando'; estado.motivo = ''; } } catch {}
+  try { if (!(await entrar(ctx, SITE, cfgLogin(), sessao)).match(/logado|entrou/)) { estado.fase = 'login'; estado.motivo = 'A sessão caiu: entre na janela do navegador.'; avisar('Bot de Fretes: sessão caiu', estado.motivo); await janela('normal'); await aguardaLogin(); await janela('minimized'); estado.fase = 'rodando'; estado.motivo = ''; } } catch {}
 }
 
 async function rodada() {
@@ -77,7 +78,7 @@ async function rodada() {
   try {
     const e = (await app.chrome.storage.local.get('syncEstado')).syncEstado || {};
     if (e.pausado) {
-      estado.erroPausa = true; estado.motivo = e.motivo || 'Pausado por erro.';
+      estado.erroPausa = true; estado.motivo = e.motivo || 'Pausado por erro.'; avisar('Bot de Fretes: pausado', estado.motivo);
       if (cfg.usuario && tentativas < 2 && Date.now() - ultimoLogin > 30 * 60e3) { // sessao caiu: tenta entrar sozinho (no maximo 2 vezes seguidas)
         tentativas++; log('Sessão caiu. Tentando entrar de novo...');
         if ((await entrar(ctx, SITE, cfgLogin(), sessao)) === 'entrou') { tentativas = 0; await app.rodar('syncRetomar()'); estado.erroPausa = false; estado.motivo = ''; emRodada = false; return rodada(); }
@@ -86,9 +87,9 @@ async function rodada() {
     }
     await app.rodar('syncAuto()');
     const e2 = (await app.chrome.storage.local.get('syncEstado')).syncEstado || {};
-    if (e2.pausado) { estado.erroPausa = true; estado.motivo = e2.motivo || ''; }
+    if (e2.pausado) { estado.erroPausa = true; estado.motivo = e2.motivo || ''; avisar('Bot de Fretes: pausado', estado.motivo); }
     estado.ultima = Date.now();
-  } catch (e) { log('Erro na rodada: ' + e.message); }
+  } catch (e) { log('Erro na rodada: ' + e.message, 'erro'); }
   finally { emRodada = false; }
 }
 

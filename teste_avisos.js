@@ -1,0 +1,10 @@
+const assert = require('assert'); const { avisar } = require('./programa-windows/avisos');
+const chamadas = []; const exec = (...a) => { chamadas.push(a); return { on() { return this; }, unref() {} }; };
+const o = (agora, p = 'win32') => ({ agora, plataforma: p, executar: exec });
+assert.strictEqual(avisar('T', 'x', o(1e9)), true); assert.strictEqual(chamadas.length, 1);
+assert.strictEqual(chamadas[0][2].env.BOT_X, 'x');
+assert.strictEqual(avisar('T', 'y', o(1e9 + 30e3)), false, 'no maximo 1 por minuto');
+assert.strictEqual(avisar('T', 'x', o(1e9 + 120e3)), false, 'mesmo aviso: so depois de 30 min');
+assert.strictEqual(avisar('T', 'x', o(1e9 + 31 * 60e3)), true);
+assert.strictEqual(avisar('T', 'z', o(1e9 + 40 * 60e3, 'linux')), true); assert.strictEqual(chamadas.length, 2, 'fora do Windows nao chama o PowerShell');
+console.log('OK teste_avisos');
