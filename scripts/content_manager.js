@@ -6,7 +6,7 @@ const save = () => ask('export').then(data => data.error ? data : chrome.runtime
 
 window.addEventListener('message', ev => {
   const d = ev.data;
-  if (ev.source === window && d && d.mspa === 'save') return void save(); // fim do explorador
+  if (ev.source === window && d && d.mspa === 'save') return void save(); // fim da gravacao
   if (ev.source !== window || !d || d.mspa !== 'res' || !pending.has(d.id)) return;
   pending.get(d.id)(d.res);
   pending.delete(d.id);

@@ -18,30 +18,27 @@ const PAGE = `<!doctype html><title>SPA teste</title><body>
   const x = new XMLHttpRequest(); x.open('GET', '/api/xhr'); x.send();
 </script></body>`;
 
-// Mini SPA com rotas (pushState), modal, botao que grava (POST) e botao perigoso.
-const SPA = `<!doctype html><title>SPA rotas</title><body><nav><a href="/app">Inicio</a> <a href="/app/b">Pagina B</a> <a href="https://fora.example/x">Fora</a></nav><main></main>
+// Mini SPA de "criar frete": campos, select, botao que publica (POST), toast, mudanca de tela e localStorage.
+const SPA = `<!doctype html><title>Criar frete</title><body><main>
+<label for="orig">Origem</label><input id="orig">
+<div><label>Peso (ton)</label><div><input id="peso" type="number"></div></div>
+<select id="veic" aria-label="Veiculo"><option value="">-</option><option value="2">Carreta</option></select>
+<label><input id="rast" type="checkbox"> Rastreador</label>
+<input id="pw" type="password" placeholder="Senha">
+<button id="criar">Criar frete</button></main>
 <script>
-  const main = document.querySelector('main');
-  const render = () => {
-    if (location.pathname === '/app/b') main.innerHTML = '<button id="nb">Na pagina B</button>';
-    else main.innerHTML = '<button id="abrir">Abrir modal</button><button id="ex">Excluir tudo</button><button id="gr">Gravar rascunho</button><button id="nova">Nova aba</button>';
-    const $ = id => document.getElementById(id);
-    if ($('abrir')) {
-      $('abrir').onclick = () => { const d = document.createElement('div'); d.innerHTML = '<button id="dm">Dentro do modal</button>'; main.append(d); $('dm').onclick = () => { window.dentro = 1; }; };
-      $('ex').onclick = () => { window.excluiu = 1; };
-      $('gr').onclick = () => fetch('/api/gravar', { method: 'POST', body: JSON.stringify({ rascunho: 1 }) }).catch(() => { window.bloqueado = 1; });
-      $('nova').onclick = () => window.open('https://fora.example/nova');
-    }
+  document.getElementById('criar').onclick = async () => {
+    const body = { origem: orig.value, peso: +peso.value, veiculo: veic.value };
+    const r = await (await fetch('/api/frete', { method: 'POST', body: JSON.stringify(body) })).json();
+    localStorage.setItem('ultimoFrete', r.id);
+    const t = document.createElement('div'); t.textContent = 'Frete criado: ' + r.id; document.body.append(t);
+    history.pushState(null, '', '/app/fretes/' + r.id);
   };
-  document.querySelector('nav').onclick = e => { const a = e.target.closest('a'); if (a && a.origin === location.origin) { e.preventDefault(); history.pushState(null, '', a.href); render(); } };
-  addEventListener('popstate', render);
-  render();
 </script></body>`;
 
 (async () => {
-  let gravacoes = 0;
   const server = http.createServer((req, res) => {
-    if (req.method === 'POST' && req.url === '/api/gravar') gravacoes++;
+    if (req.url === '/api/frete') { res.setHeader('content-type', 'application/json'); return res.end('{"id":"SPMG-4BC4"}'); }
     if (req.url.startsWith('/app')) { res.setHeader('content-type', 'text/html'); return res.end(SPA); }
     if (req.url.startsWith('/api')) { res.setHeader('content-type', 'application/json'); return res.end('{"ok":true}'); }
     res.setHeader('content-type', 'text/html'); res.end(PAGE);
@@ -106,39 +103,48 @@ const SPA = `<!doctype html><title>SPA rotas</title><body><nav><a href="/app">In
     });
     assert.ok(!/SEGREDO/.test(masked) && masked.includes('SPMG-1') && masked.includes('"123"'), masked);
 
-    // Fase 3: explorador em modo seguro
+    // Fase 3: gravador do que o usuario faz
     const app = await ctx.newPage();
     await app.goto(base + 'app');
     await app.waitForFunction(() => window.__MSPA);
-    await app.evaluate(() => { window.__MSPA_WAIT = 150; });
-    await app.addScriptTag({ path: path.join(__dirname, 'scripts/inject_explorer.js') });
-    await app.waitForFunction(() => window.__MSPA_MAP && window.__MSPA_MAP.done, null, { timeout: 30000 });
-    const map = await app.evaluate(() => window.__MSPA_MAP);
-    assert.deepStrictEqual(Object.keys(map.routes).sort(), ['/app', '/app/b'], JSON.stringify(Object.keys(map.routes)));
-    const acts = map.routes['/app'].actions;
-    const find = t => acts.find(a => a.text === t);
-    assert.strictEqual(find('Excluir tudo').skipped, 'parece perigoso');
-    assert.strictEqual(await app.evaluate(() => window.excluiu), undefined);
-    assert.strictEqual(await app.evaluate(() => window.dentro), 1, 'clicou dentro do modal');
-    const gr = find('Gravar rascunho').requests[0];
-    assert.ok(gr.blocked && gr.method === 'POST' && gr.reqBody.includes('rascunho'), JSON.stringify(gr));
-    assert.strictEqual(gravacoes, 0, 'POST nao pode chegar no servidor');
-    assert.strictEqual(find('Fora').external, 'https://fora.example/x');
-    assert.strictEqual(map.opened[0].url, 'https://fora.example/nova');
-    assert.ok(map.routes['/app/b'].actions.some(a => a.text === 'Na pagina B' && !a.skipped));
-    assert.strictEqual(await app.evaluate(() => window.__MSPA_SAFE), false, 'modo seguro desliga no fim');
+    await app.evaluate(() => { const a = Element.prototype.attachShadow; Element.prototype.attachShadow = function () { return a.call(this, { mode: 'open' }); }; });
+    await app.addScriptTag({ path: path.join(__dirname, 'scripts/inject_recorder.js') });
+    await app.locator('#orig').pressSequentially('Jacarei');
+    await app.fill('#peso', '25');
+    await app.selectOption('#veic', '2');
+    await app.check('#rast');
+    await app.fill('#pw', 'minhasenha');
+    await app.click('#criar');
+    await app.waitForSelector('text=Frete criado: SPMG-4BC4');
+    await app.waitForTimeout(800);
+    await app.locator('#mspa-rec').getByText('Parar e salvar').click();
+    const rec = await app.evaluate(() => window.__MSPA_REC);
+    const tl = rec.timeline;
+    const fields = tl.filter(s => s.type === 'field');
+    assert.deepStrictEqual(fields.filter(f => f.name === 'Origem').map(f => f.value), ['Jacarei'], 'digitacao vira um passo so');
+    assert.ok(fields.some(f => f.name === 'Peso (ton)' && f.value === '25'), JSON.stringify(fields));
+    assert.ok(fields.some(f => f.name === 'Veiculo' && f.value === 'Carreta'));
+    assert.ok(fields.some(f => f.name === 'Rastreador' && f.value === true));
+    assert.ok(!JSON.stringify(rec).includes('minhasenha'), 'senha nunca entra na gravacao');
+    const click = tl.find(s => s.type === 'click' && s.target.text === 'Criar frete');
+    assert.deepStrictEqual(click.form.map(f => [f.name, f.value]),
+      [['Origem', 'Jacarei'], ['Peso (ton)', '25'], ['Veiculo', 'Carreta'], ['Rastreador', true], ['Senha', '***']]);
+    const req = tl.find(s => s.type === 'request' && s.url.endsWith('/api/frete'));
+    assert.ok(req.reqBody.includes('"origem":"Jacarei"') && req.resBody.includes('SPMG-4BC4'), JSON.stringify(req));
+    assert.ok(tl.indexOf(click) < tl.indexOf(req), 'linha do tempo em ordem');
+    assert.ok(tl.some(s => s.type === 'appeared' && s.texts.includes('Frete criado: SPMG-4BC4')));
+    assert.ok(tl.some(s => s.type === 'screen' && s.route === '/app/fretes/SPMG-4BC4'));
+    assert.ok(tl.some(s => s.type === 'storage' && s.key === 'ultimoFrete' && s.value === 'SPMG-4BC4'));
+    assert.strictEqual(await app.evaluate(() => window.__MSPA_RECORDER), undefined, 'gravador desligou');
     await app.waitForTimeout(500);
-    // Playwright renomeia os downloads; conta os concluidos
-    const salvos = await sw.evaluate(async () => (await chrome.downloads.search({ state: 'complete' })).length);
-    assert.strictEqual(salvos, 2, 'export manual + salvamento automatico do explorador');
-    assert.strictEqual(await app.evaluate(() => fetch('/api/gravar', { method: 'POST' }).then(r => r.status)), 200);
-    assert.strictEqual(gravacoes, 1);
+    // Playwright renomeia os downloads; conta os concluidos (export manual + salvamento ao parar a gravacao)
+    assert.strictEqual(await sw.evaluate(async () => (await chrome.downloads.search({ state: 'complete' })).length), 2);
 
     // Export grande (data: URL do background) continua salvando
     await app.evaluate(() => { for (let i = 0; i < 400; i++) window.__MSPA_NET.push({ url: 'x', resBody: 'x'.repeat(20000) }); });
     const big = await sw.evaluate(async () => { const [tab] = await chrome.tabs.query({ active: true }); return chrome.tabs.sendMessage(tab.id, { cmd: 'export' }); });
     assert.ok(big.ok, JSON.stringify(big));
-    console.log('OK: scan, React Fiber, rede (mascara), export, painel, explorador em modo seguro, export grande');
+    console.log('OK: scan, React Fiber, rede (mascara), export, painel, gravador, export grande');
   } finally {
     await ctx.close(); server.close();
   }

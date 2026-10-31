@@ -46,7 +46,7 @@
     elements = [];
     const items = [];
     for (const el of document.body.querySelectorAll('*')) {
-      if (el.closest('#mspa-overlay,#mspa-panel,#mspa-explorer')) continue;
+      if (el.closest('#mspa-overlay,#mspa-panel,#mspa-rec')) continue;
       const react = reactInfo(el);
       const clickable = react && react.handlers.some(h => /^on(Click|MouseDown|PointerDown|KeyDown|Change|Submit)$/.test(h));
       if (!el.matches(INTERACTIVE) && !clickable) continue;
@@ -124,7 +124,12 @@
     return { ok: true };
   };
 
-  const api = window.__MSPA = { lastScan: null, scan, highlight, el, act };
+  const describe = e => {
+    const r = reactInfo(e);
+    return { tag: e.localName, text: label(e), selector: cssPath(e), component: r && r.components[0] };
+  };
+
+  const api = window.__MSPA = { lastScan: null, scan, highlight, el, act, describe };
 
   const handlers = {
     scan: () => {
@@ -139,7 +144,7 @@
       when: new Date().toISOString(),
       dom: api.lastScan || scan(),
       network: window.__MSPA_NET || [],
-      map: window.__MSPA_MAP || null,
+      recording: window.__MSPA_REC || null,
     }),
   };
 

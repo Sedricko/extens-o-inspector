@@ -8,12 +8,14 @@ Popup:
 - Destacar on/off: contorno azul (HTML) ou vermelho (React) com o numero de cada elemento.
 - Export JSON: salva Downloads/master-spa/<site>-<data>.json com o DOM mapeado e as chamadas fetch/XHR.
 - Painel de acoes (Fase 2): lista em Shadow DOM, com filtro e botoes Ver, Clicar e Digitar.
-- Explorar sozinho (modo seguro): visita as telas do site e clica em cada botao, menu e aba. No fim salva o JSON
-  sozinho, com o campo "map": cada tela, cada clique, o que abriu e quais chamadas de rede fez.
-  Modo seguro: enquanto explora, nada que grava no servidor (POST/PUT/PATCH/DELETE) sai da pagina; fica anotado
-  com "blocked": true e o corpo que seria enviado. Pula botoes com texto perigoso (excluir, pagar, publicar,
-  salvar, enviar, sair, exposicao...), nao digita em campos e nao abre aba nova. Para: botao Parar ou clicar de novo.
-  Limite: 300 cliques. Se um clique recarregar a pagina inteira, o explorador para.
+- Gravar o que eu fizer: aparece a barra vermelha "Gravando". Use o site normalmente (ex.: criar um frete) e
+  clique em "Parar e salvar". O JSON sai com o campo "recording.timeline", em ordem de tempo:
+    screen   = tela/endereco atual          field    = campo preenchido (nome que aparece na tela + valor)
+    click    = botao/opcao clicado; em botoes vem "form" com tudo que estava preenchido na hora
+    request  = chamada que o site fez (o que enviou e o que voltou)
+    appeared = texto que apareceu ou mudou na tela (mensagem de sucesso, erro, modal)
+    storage  = o que o site guardou por dentro (localStorage/sessionStorage)
+  Senha e campos de cartao saem como ***. Se a pagina recarregar inteira (F5), a gravacao se perde.
 
 Rede: guarda as ultimas 800 chamadas (corpo ate 20000 caracteres), sem Google Analytics e afins. Mascara senha,
 tokens e codigo do login (code, code_verifier) em JSON e form; nao guarda cabecalhos nem cookies. O JSON fica so no seu PC, mas confira antes de mandar para alguem.

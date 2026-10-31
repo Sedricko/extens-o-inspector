@@ -25,4 +25,4 @@ const inject = file => async () => {
   } catch (e) { show(String(e.message || e)); }
 };
 document.getElementById('panel').onclick = inject('scripts/inject_panel.js');
-document.getElementById('explore').onclick = inject('scripts/inject_explorer.js');
+document.getElementById('rec').onclick = inject('scripts/inject_recorder.js');
