@@ -9,7 +9,11 @@ const pergunta = t => new Promise(r => rl.question(t, r));
 
 (async () => {
   let cfg = fs.existsSync(arqCfg) ? JSON.parse(fs.readFileSync(arqCfg, 'utf8')) : {};
-  if (!cfg.url) cfg.url = (await pergunta('Cole o link da planilha (termina em /exec): ')).trim();
+  const urlOk = u => /^https:\/\/script\.google(usercontent)?\.com\/.*\/exec(\?.*)?$/.test(u || '');
+  while (!urlOk(cfg.url)) {
+    if (cfg.url) console.log('Esse link nao serve: precisa ser o "URL do app da Web" do Apps Script (comeca com https://script.google.com e termina em /exec), nao o link de editar a planilha.');
+    cfg.url = (await pergunta('Cole o link do app da web (termina em /exec): ')).trim();
+  }
   if (!cfg.token) cfg.token = (await pergunta('Senha da planilha: ')).trim();
   cfg = { fechar: 'desativar', minutos: 15, limite: 5, pausaSeg: 10, abas: 1, conferirZero: true, ...cfg, auto: true };
   fs.writeFileSync(arqCfg, JSON.stringify(cfg, null, 2));
@@ -24,7 +28,7 @@ const pergunta = t => new Promise(r => rl.question(t, r));
   console.log('\nAbrindo a Central. Se pedir login, entre agora (so na primeira vez).');
   const page = ctx.pages()[0] || await ctx.newPage();
   await page.goto('https://novacentral.fretebras.com.br/meus-fretes').catch(() => {});
-  await page.waitForFunction(() => /ativos/i.test(document.body.innerText), null, { timeout: 0, polling: 2000 });
+  await page.waitForFunction(() => document.body && /ativos/i.test(document.body.innerText), null, { timeout: 0, polling: 2000 });
   console.log('Login ok. O bot esta rodando. Para encerrar, feche esta janela.\n');
 
   const rodada = async () => {
