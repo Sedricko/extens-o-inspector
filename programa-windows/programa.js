@@ -52,7 +52,7 @@ async function iniciarBot() {
     app = criar({ ctx, arquivoDados: path.join(pasta, 'dados.json'), escrever: log });
     await app.chrome.storage.local.set({ syncCfg: { ...cfg, auto: true } });
     await app.rodar('syncRetomar()');
-    sessao = await ctx.newPage();
+    sessao = ctx.pages().find(x => !x.isClosed()) || await ctx.newPage(); // usa a aba vazia que o navegador abre, sem deixar sobra
     estado.motivo = ''; await garanteLogin();
     estado.fase = 'rodando'; estado.motivo = ''; estado.erroPausa = false; log('Login ok. O bot está rodando.');
     agendar(); rodada();
