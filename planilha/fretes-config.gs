@@ -96,3 +96,12 @@ function gerarExemplos10() {
   aba.getRange(linha, 1, ex.length, FR_COLUNAS.length).setValues(ex);
   SpreadsheetApp.getUi().alert('10 exemplos adicionados nas linhas ' + linha + ' a ' + (linha + 9) + '.\nO produto e "TESTE - EXCLUIR": se publicar, exclua depois em Meus Fretes.');
 }
+
+// UM CLIQUE no projeto da planilha: instala o menu, prepara a aba FRETES e importa as cargas ativas da Base.
+// Nada e publicado: as cargas entram como REVISAR. Importacao automatica e "publicar sozinho" ficam DESLIGADOS (ligue no menu Fretes depois dos testes).
+function configurarTudo() {
+  instalarMenuFretes();
+  configurarAbaFretes();
+  PropertiesService.getScriptProperties().setProperty('FR_AUTO', 'nao');
+  importarDaBase();
+}

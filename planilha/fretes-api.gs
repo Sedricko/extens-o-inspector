@@ -36,7 +36,16 @@ function testarAcesso() {
 function gerarSenha() {
   const senha = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
   PropertiesService.getScriptProperties().setProperty('SENHA', senha);
+  let url = '';
+  try { url = ScriptApp.getService().getUrl() || ''; } catch (e) {}
   Logger.log('SENHA DA INTEGRACAO (cole na extensao): %s', senha);
+  Logger.log('ENDERECO (cole na extensao): %s', url || '(ainda nao implantado: pegue o URL do app da Web ao implantar)');
+}
+
+// UM CLIQUE no projeto novo: confere o ID da planilha, autoriza o acesso e gera a senha. Depois e so implantar.
+function prepararTudo() {
+  testarAcesso();
+  gerarSenha();
 }
 
 function doGet(e) {

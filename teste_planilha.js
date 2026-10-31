@@ -51,7 +51,7 @@ const ctx = vm.createContext({
   SpreadsheetApp: { getActiveSpreadsheet: () => planilha, getActive: () => planilha, getUi: () => ({ alert() {} }), openById: id => { if (id !== 'ID_TESTE') throw new Error('Unexpected error while getting the method or property openById'); return planilha; } },
   LockService: { getScriptLock: () => ({ tryLock: () => true, waitLock() {}, releaseLock() {} }) },
   ContentService: { MimeType: { JSON: 'json' }, createTextOutput: t => ({ setMimeType: () => t }) },
-  ScriptApp: { getProjectTriggers: () => triggers, deleteTrigger: t => triggers.splice(triggers.indexOf(t), 1),
+  ScriptApp: { getService: () => ({ getUrl: () => '' }), getProjectTriggers: () => triggers, deleteTrigger: t => triggers.splice(triggers.indexOf(t), 1),
     newTrigger: fn => ({ timeBased: () => ({ everyMinutes: () => ({ create: () => triggers.push({ getHandlerFunction: () => fn }) }) }) }) },
 });
 // o usuario cola os arquivos no mesmo projeto: aqui os 3 (o do usuario nao entra; so conferimos que nao ha nomes repetidos entre os nossos)
@@ -67,8 +67,8 @@ vm.runInContext("PropertiesService.getScriptProperties().setProperty('SENHA', 'x
 const run = c => { const r = vm.runInContext(c, ctx); return r && typeof r === 'object' ? JSON.parse(JSON.stringify(r)) : r; }; // copia para fora do simulador
 
 // ---- aplicativo da web (senha, leitura, reserva, nao sobrescreve)
-run('testarAcesso()'); assert.match(logs[0], /Aba FRETES encontrada/);
-run('gerarSenha()'); props.SENHA = logs[1].split(': ')[1]; assert.ok(props.SENHA.length >= 60, 'senha longa');
+run('prepararTudo()'); assert.match(logs[0], /Aba FRETES encontrada/);
+props.SENHA = logs[1].split(': ')[1]; assert.match(logs[2], /ENDERECO/); assert.ok(props.SENHA.length >= 60, 'senha longa');
 const SENHA = props.SENHA;
 const get = t => JSON.parse(run('doGet')({ parameter: { token: t } }));
 const post = o => JSON.parse(run('doPost')({ postData: { contents: JSON.stringify(o) } }));
