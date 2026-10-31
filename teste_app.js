@@ -131,6 +131,18 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
     assert.ok(fretes.some(x => x.id === 'F100'), 'o do colega continua la');
     assert.deepStrictEqual(linhas.map(l => l.status), ['Desativado', 'Nao encontrado']);
 
+    // 5) conferir com o site de verdade: "Publicado" com codigo que sumiu do Fretebras vira REPUBLICAR e publica na mesma rodada
+    reset(2, 0); // AA-1000 e AA-1001 ativos de verdade
+    linhas.length = 0;
+    linhas.push(L('Publicado', { idcarga: 'c1', codigo: 'AA-1000' }));   // bate com o que esta ativo: nao mexe
+    linhas.push(L('Publicado', { idcarga: 'c2', codigo: 'AA-9999', destino: 'FRUTAL/MG' })); // sumiu do site
+    await limpa(); await cfg({ apagarTudo: false, conferirZero: false, conferirSumidos: true }); await app.rodar('syncAuto()');
+    assert.strictEqual(linhas[0].status, 'Publicado', 'frete que continua ativo no site nao e mexido');
+    assert.strictEqual(linhas[0].codigo, 'AA-1000');
+    assert.strictEqual(linhas[1].status, 'Publicado', 'frete que sumiu do site: republicado na mesma rodada');
+    assert.notStrictEqual(linhas[1].codigo, 'AA-9999', 'ganhou codigo novo');
+    assert.ok(saida.some(l => /1 frete\(s\) sumiram do Fretebras/.test(l)), saida.slice(0, 6).join(' | '));
+
     assert.ok(saida.some(l => /Aviso do site .*novo recurso/.test(l)), 'fechou o popup e registrou: ' + saida.slice(0, 5).join(' | '));
     assert.ok(saida.some(l => /Aviso do site .*promocao|Aviso do site .*promoção/i.test(l)) && saida.some(l => /automaticamente/.test(l)), 'fechou os dois avisos: ' + saida.slice(0, 6).join(' | '));
     assert.strictEqual(irDes, 0, 'nunca clica em "Ir para Desativados"');

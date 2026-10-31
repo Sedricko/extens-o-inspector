@@ -51,6 +51,20 @@ async function filtrarMeus(page, est) {
   return est.eu;
 }
 
+// Os codigos dos seus fretes ATIVOS, para comparar com o que a planilha acha que esta "Publicado".
+// So da para confiar quando tudo cabe numa pagina (ate 15, o que a Central mostra de uma vez): completo:false
+// quando ha mais paginas, para nunca arriscar marcar como sumido um frete que so nao apareceu na pagina 1.
+async function codigosAtivos(ctx, base) {
+  const { page, est } = await abrirMeus(ctx, base);
+  try {
+    await filtrarMeus(page, est);
+    const total = est.lista.json.meta.total.enabled;
+    const pagina = est.lista.json.data;
+    if (total > pagina.length) return { completo: false, total };
+    return { completo: true, codigos: new Set(pagina.map(f => f.freightCode)) };
+  } finally { await page.close().catch(() => {}); }
+}
+
 // Quantos fretes ATIVOS seus existem (numero exato da propria Central, so os seus).
 async function contarMeus(ctx, base) {
   const { page, est } = await abrirMeus(ctx, base);
@@ -118,4 +132,4 @@ async function entrar(ctx, base, cfg, pagina) {
   return 'falhou';
 }
 
-module.exports = { abrirMeus, filtrarMeus, contarMeus, apagarMeus, entrar };
+module.exports = { abrirMeus, filtrarMeus, contarMeus, apagarMeus, entrar, codigosAtivos };

@@ -67,6 +67,7 @@ function criar({ ctx, arquivoDados, escrever = console.log }) {
   // No programa, Meus Fretes e sempre aberto FILTRADO por voce (meus.js) e a contagem vem do numero exato da Central.
   sandbox.fbApagarMeus = base => meus.apagarMeus(ctx, base, escrever);
   sandbox.fbContarAtivos = (base = rodar('FB.site')) => meus.contarMeus(ctx, base);
+  sandbox.fbCodigosAtivos = (base = rodar('FB.site')) => meus.codigosAtivos(ctx, base);
   sandbox.fbClose = async (codigo, acao, base = rodar('FB.site')) => {
     const { page, est } = await meus.abrirMeus(ctx, base);
     const id = ++seq; paginas.set(id, page);

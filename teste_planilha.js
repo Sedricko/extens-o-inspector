@@ -17,7 +17,7 @@ const sheets = {
     ['a10', 'ATIVA', 'TERCEIRO', new Date(agora + dia), 'PAPEL', 'SIM', 'CAVALO TOCO', 'SIDER', '', 'SERRA', 'ES', 'VIANA', 'ES', 20000, '', 'EM PROCESSO', ''],
     ['a11', 'ATIVA', 'TERCEIRO', new Date(agora + dia), 'PAPEL', 'SIM', 'CAVALO TOCO', 'SIDER', '', 'SERRA', 'ES', 'VIANA', 'ES', 20000, '', 'CARGA EM ABERTO', ''],
   ],
-  Mot: [['idCarga', 'idDados', 'Situacao', 'CPFMotorista'], ['a4', 'x', 'FECHADO', '000.000.000-00'], ['a11', 'y', 'CANCELADO', '1']],
+  Mot: [['idCarga', 'idDados', 'Situacao', 'CPFMotorista'], ['a4', 'x', 'FECHADO', '000.000.000-00'], ['a11', 'y', 'CANCELADO', '']],
 };
 const props = {}, triggers = [], logs = [];
 const chain = () => new Proxy(function () {}, { get: (t, p) => (p === 'then' ? undefined : chain()), apply: () => chain() }); // formatacao: aceita qualquer chamada
@@ -92,7 +92,12 @@ const lin = (st, cod, id) => ['SERRA/ES', 'VIANA/ES', 'PAPEL', 'A combinar', '20
 sheets.FRETES = [CAB, lin('Publicado', 'ZZ-9', 'a9'), lin('PUBLICAR', '', 'a10'), lin('Publicado', 'ZZ-11', 'a11')];
 const col = (r, k) => r[CAB.indexOf(k)];
 const achar = id => sheets.FRETES.find((r, i) => i > 0 && col(r, 'IDCARGA') === id);
-assert.deepStrictEqual(run('importarDaBase()'), { novas: 2, fechar: 1, cancelar: 1 });
+assert.deepStrictEqual(run('importarDaBase()'), { novas: 3, fechar: 1, cancelar: 1 });
+assert.ok(achar('a7'), 'FINALIZADO entra como ativa (o Autoresponder so usa FINALIZADO no arquivamento, nao na regra de ativa)');
+assert.ok(sheets.Log && sheets.Log[0].join() === 'Quando,Origem,Mensagem', 'aba Log criada com cabecalho');
+assert.ok(sheets.Log.some(r => r[1] === 'Planilha' && /3 nova/.test(r[2])), 'aba Log registra a importacao: ' + JSON.stringify(sheets.Log));
+assert.ok(sheets.Log.some(r => r[1] === 'Bot' && /gravou 1: L2=Publicado MGMG-27DE/.test(r[2])), 'aba Log registra o que o bot gravou');
+assert.strictEqual(col(achar('a11'), 'STATUS'), 'Publicado', 'Mot CANCELADO sem motorista nao fecha (so FECHADO ou motorista preenchido)');
 const a1 = achar('a1');
 assert.deepStrictEqual(CAB.map(k => col(a1, k)), ['EXTREMA/MG', 'FRUTAL/MG', 'EMBALAGEM', 'A combinar', '25 Ton', '28 PAL', 'Carreta LS + Vanderléia + Carreta', 'Baú + Sider', 'Sim', 'Não', 'Outro', 'NECESSARIO 6 CINTAS', 'REVISAR', '', 'a1', '']);
 assert.deepStrictEqual(['PESO', 'PALETES', 'VEÍCULO', 'CARROCERIA', 'RASTREADA'].map(k => col(achar('a8'), k)), ['14 Ton', '', 'Truck', 'Bug Porta Container', 'Não']);
@@ -145,8 +150,8 @@ carregar(fonte.replace('COLE_AQUI_O_ID_DA_PLANILHA', 'ID_TESTE'));
 assert.throws(() => run('importarDaBase()'), /Base vazia ou inexistente/); // sem FR_ID_BASE procura na mesma planilha
 carregar(fonte.replace('COLE_AQUI_O_ID_DA_PLANILHA', 'ID_TESTE').replace("const FR_ID_BASE = '';", "const FR_ID_BASE = 'ID_BASE';"));
 run('testarAcesso()'); assert.ok(logs.some(l => /Aba Base encontrada/.test(l)));
-assert.strictEqual(run('importarDaBase()').novas, 5, 'le a Base da outra planilha e escreve a FRETES na nova');
-assert.deepStrictEqual(sheets.FRETES.slice(1).map(r => r[CAB.indexOf('IDCARGA')]).sort(), ['a1', 'a11', 'a12', 'a13', 'a8']);
+assert.strictEqual(run('importarDaBase()').novas, 6, 'le a Base da outra planilha e escreve a FRETES na nova');
+assert.deepStrictEqual(sheets.FRETES.slice(1).map(r => r[CAB.indexOf('IDCARGA')]).sort(), ['a1', 'a11', 'a12', 'a13', 'a7', 'a8']);
 assert.strictEqual(storeBase.Base.length, 14, 'a planilha da Base nao e alterada');
 sheets.Base = storeBase.Base; sheets.Mot = storeBase.Mot; // volta ao cenario de uma planilha so
 carregar(fonte.replace('COLE_AQUI_O_ID_DA_PLANILHA', 'ID_TESTE'));
@@ -159,4 +164,12 @@ run('ativarImportacaoAutomatica()'); run('ativarImportacaoAutomatica()');
 assert.strictEqual(triggers.length, 1);
 run('desativarImportacaoAutomatica()');
 assert.strictEqual(triggers.length, 0);
+
+// regra sua (nao existe no Autoresponder): carga com motorista na Mot fecha mesmo sem Situacao=FECHADO (cenario isolado, do zero)
+sheets.FRETES = [CAB, lin('Publicado', 'ZZ-14', 'a14')];
+sheets.Base = [sheets.Base[0], ['a14', 'ATIVA', 'TERCEIRO', new Date(agora + dia), 'PAPEL', 'SIM', 'CAVALO TOCO', 'SIDER', '', 'SERRA', 'ES', 'VIANA', 'ES', 20000, '', 'CARGA EM ABERTO', '']];
+sheets.Mot = [sheets.Mot[0], ['a14', 'z', 'EM ROTA', '111.111.111-11']];
+assert.deepStrictEqual(run('importarDaBase()'), { novas: 0, fechar: 1, cancelar: 0 });
+assert.strictEqual(col(achar('a14'), 'STATUS'), 'FECHAR', 'tem motorista na Mot, mesmo Situacao nao sendo FECHADO: fecha');
+
 console.log('OK: projeto unico (aplicativo da web + importador Base -> FRETES, sem planilha ativa e sem janelas)');

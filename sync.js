@@ -1,6 +1,6 @@
 // Sincronizacao com a planilha (aplicativo da web do Apps Script): publica o que esta PUBLICAR, fecha o que esta
 // FECHAR/EXCLUIR/DESATIVAR e devolve STATUS/CODIGO. Manual (pagina de sincronizacao) e automatica (alarme).
-const SYNC_PADRAO = { url: '', token: '', fechar: 'desativar', auto: false, minutos: 15, limite: 5, pausaSeg: 10, janela: 'aba', abas: 1, conferirZero: true, apagarTudo: false };
+const SYNC_PADRAO = { url: '', token: '', fechar: 'desativar', auto: false, minutos: 15, limite: 5, pausaSeg: 10, janela: 'aba', abas: 1, conferirZero: true, apagarTudo: false, conferirSumidos: false };
 const syncCfg = async () => ({ ...SYNC_PADRAO, ...((await chrome.storage.local.get('syncCfg')).syncCfg || {}) });
 
 // Varias abas trabalham ao mesmo tempo: cada assunto (log, estado, fila, historico, memoria) grava um de cada vez, para um nao apagar o outro.
@@ -163,8 +163,25 @@ async function syncAuto(base = FB.site) {
   await syncEstadoSet({ rodando: Date.now() });
   const feitos = [];
   try {
-    const { plano, linhas } = await syncPlano();
+    let { plano, linhas } = await syncPlano();
     await syncEscrever(plano.escritas);
+
+    // CONFERE COM O FRETEBRAS DE VERDADE (so no programa Windows): carga "Publicado" na planilha que ja nao
+    // esta mais ativa la (por exemplo, a propria Fretebras desativou sozinha) vira REPUBLICAR. So age quando
+    // da para ver TODOS os fretes ativos numa pagina so (senao, podia marcar sumido um que so nao apareceu).
+    if (cfg.conferirSumidos && typeof fbCodigosAtivos === 'function') {
+      const r = await fbCodigosAtivos(base);
+      if (!r.completo) await syncLog(`Nao conferi fretes sumidos do Fretebras: ${r.total} ativo(s), mais do que cabe numa pagina (pulei desta vez).`, 'erro');
+      else {
+        const sumidos = linhas.filter(l => /^publicad/.test(linhaNorm(l.status)) && l.codigo && !r.codigos.has(l.codigo));
+        if (sumidos.length) {
+          await syncEscrever(sumidos.map(l => ({ linha: l.linha, status: 'REPUBLICAR', codigo: '', esperado: [l.status], confere: { origem: l.origem, destino: l.destino } })));
+          await syncLog(`${sumidos.length} frete(s) sumiram do Fretebras (nao estao mais ativos la) e foram marcados REPUBLICAR.`);
+          ({ plano, linhas } = await syncPlano()); // recalcula ja com os REPUBLICAR novos, para entrarem nesta mesma rodada
+        }
+      }
+    }
+
     const lista = plano.acoes.slice(0, cfg.limite);
     const registrar = (acao, r) => { feitos.push(r); return syncLog(`linha ${acao.linha} ${acao.tipo}: ${r.pulada ? 'pulada (' + r.motivo + ')' : r.status + (r.codigo ? ' ' + r.codigo : '')}`, r.status === 'ERRO' ? 'erro' : 'info'); };
 

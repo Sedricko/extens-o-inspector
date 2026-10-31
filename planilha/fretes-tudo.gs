@@ -11,13 +11,18 @@
  *  4) Cole na extensao o endereco do bloco "App da Web" (termina em /exec) e a senha.
  *
  * Funcoes: prepararTudo, importarDaBase, ativarImportacaoAutomatica / desativarImportacaoAutomatica (a cada 10 min),
+ *          ativarImportacaoInstantanea / desativarImportacaoInstantanea (importa na hora quando voce edita a aba Base),
  *          ligarPublicacaoAutomatica / desligarPublicacaoAutomatica (cargas importadas entram como PUBLICAR ou REVISAR),
  *          republicarAbertas (as cargas ainda abertas que ja tinham sido publicadas voltam como REPUBLICAR, sem o codigo antigo),
  *          renovarAbertas (cargas abertas ha mais de FR_RENOVAR_HORAS viram RENOVAR) e ativar/desativarRenovacaoAutomatica,
  *          mostrarSenha, gerarSenha (troca a senha), configurarAbaFretes, testarAcesso.
  *
- * Regra de carga ativa (a mesma do Autoresponder): StatusOferta ATIVA, Operacao diferente de so FROTA, nao cancelada, nao FINALIZADA,
- * nao fechada (aba Mot com Situacao FECHADO, ou fx_StatusCarga EM PROCESSO) e coleta nao vencida (24 h).
+ * Aba "Log" (criada sozinha na primeira vez): registra, com hora, o que a importacao fez e o que o bot leu/gravou.
+ * Serve para conferir se a planilha e o bot estao se comunicando.
+ *
+ * Regra de carga ativa (a mesma do Autoresponder): StatusOferta ATIVA, Operacao diferente de so FROTA, nao cancelada,
+ * nao fechada (aba Mot com Situacao FECHADO, OU com motorista ja atribuido ali - essa segunda parte nao existe no
+ * Autoresponder, e so para nao manter publicada uma carga que ja tem motorista) e coleta nao vencida (24 h).
  * Da aba Mot so le idCarga e Situacao. A extensao so enxerga a aba FRETES.
  */
 const FR_ID = 'COLE_AQUI_O_ID_DA_PLANILHA';   // planilha onde fica a aba FRETES (a que a extensao le e escreve)
@@ -44,6 +49,20 @@ function frAba_() {
   const aba = frPlanilha_().getSheetByName(FR_ABA);
   if (!aba) throw new Error('a planilha nao tem a aba ' + FR_ABA + ' (rode prepararTudo)');
   return aba;
+}
+
+// Aba "Log": registro do que aconteceu, dos dois lados (importacao da Base e o que o bot leu/gravou), com hora.
+// Mantem so as ultimas FR_LOG_MAX linhas; nao trava a funcao principal se der erro (log e so para conferencia).
+const FR_LOG_MAX = 500;
+function frLog_(origem, msg) {
+  try {
+    const ss = frPlanilha_();
+    let aba = ss.getSheetByName('Log');
+    if (!aba) { aba = ss.insertSheet('Log'); aba.getRange(1, 1, 1, 3).setValues([['Quando', 'Origem', 'Mensagem']]); }
+    aba.getRange(aba.getLastRow() + 1, 1, 1, 3).setValues([[new Date(), origem, String(msg).slice(0, 500)]]);
+    const sobra = aba.getLastRow() - FR_LOG_MAX;
+    if (sobra > 0) aba.deleteRows(2, sobra);
+  } catch (e) { Logger.log('Nao consegui gravar na aba Log: %s', e); }
 }
 
 // ===================== Preparacao =====================
@@ -144,7 +163,7 @@ function doPost(e) {
     const cab = aba.getRange(1, 1, 1, aba.getLastColumn()).getValues()[0].map(frChaveCol_);
     const col = k => cab.indexOf(k) + 1;
     ['status', 'codigo', 'origem', 'destino'].forEach(k => { if (!col(k)) throw new Error('falta a coluna ' + k.toUpperCase()); });
-    const gravadas = [], ignoradas = [];
+    const gravadas = [], ignoradas = [], detalhe = [];
     const colHora = col('publicadoem'); // quando virou "Publicado": a renovacao conta a partir daqui
     (corpo.atualizacoes || []).forEach(u => {
       const linha = Number(u.linha);
@@ -158,7 +177,10 @@ function doPost(e) {
       if (u.codigo !== undefined) aba.getRange(linha, col('codigo')).setValue(String(u.codigo));
       if (colHora && frNorm_(u.status) === 'publicado') aba.getRange(linha, colHora).setValue(new Date());
       gravadas.push(linha);
+      detalhe.push(`L${linha}=${u.status}${u.codigo ? ' ' + u.codigo : ''}`);
     });
+    if (detalhe.length) frLog_('Bot', `gravou ${detalhe.length}: ${detalhe.join(', ')}`);
+    if (ignoradas.length) frLog_('Bot', `${ignoradas.length} ignorada(s): ${ignoradas.map(i => `L${i.linha} (${i.motivo})`).join(', ')}`);
     return frJson_({ ok: true, gravadas, ignoradas });
   } catch (err) {
     return frJson_({ ok: false, erro: String(err.message || err) });
@@ -239,12 +261,19 @@ function frLerBase_(ss) {
     pal: c(['qtdpallets', 'pallets']), co: c(['cidadeorigem']), uo: c(['uforigem']), cd: c(['cidadedestino']), ud: c(['ufdestino']),
     peso: c(['pesocarga', 'peso']), obs: c(['observacoes', 'observacao', 'obs']),
   };
+  // Carga "fechada" (sai das ativas): Situacao=FECHADO na Mot (regra do Autoresponder), OU ja tem motorista
+  // (regra sua, nao existe no Autoresponder: carga com motorista nao fica mais disponivel para novo publico).
   const fechadas = new Set();
   const mot = ss.getSheetByName(FR_IMP.MOT);
   if (mot && mot.getLastRow() > 1) {
     const mv = mot.getDataRange().getValues(), mm = frCabecalho_(mv[0]);
-    const iM = frCol_(mm, ['idcarga', 'id']), iS = frCol_(mm, ['situacao', 'status']);
-    if (iM >= 0 && iS >= 0) mv.slice(1).forEach(r => { if (String(r[iM]).trim() && frNorm_(r[iS]) === 'fechado') fechadas.add(String(r[iM]).trim()); });
+    const iM = frCol_(mm, ['idcarga', 'id']), iS = frCol_(mm, ['situacao', 'status']), iMot = frCol_(mm, ['cpfmotorista', 'motorista']);
+    if (iM >= 0) mv.slice(1).forEach(r => {
+      const id = String(r[iM]).trim();
+      if (!id) return;
+      if (iS >= 0 && frNorm_(r[iS]) === 'fechado') fechadas.add(id);
+      else if (iMot >= 0 && String(r[iMot]).trim()) fechadas.add(id);
+    });
   }
   const agora = Date.now(), cargas = {};
   v.slice(1).forEach(r => {
@@ -255,7 +284,7 @@ function frLerBase_(ss) {
     const coleta = frData_(g(col.coleta));
     const vencida = coleta && coleta.getTime() < agora - FR_IMP.VENCE_HORAS * 3600e3;
     const ativa = status === 'ativa' && frNorm_(g(col.oper)) !== 'frota' && status !== 'cancelada' && fx !== 'cancelada' &&
-      fx !== 'finalizado' && fx !== 'em processo' && !fechadas.has(id) && !vencida;
+      fx !== 'em processo' && !fechadas.has(id) && !vencida;
     const rast = frNorm_(g(col.rast));
     const pal = Number(g(col.pal)) || 0;
     cargas[id] = {
@@ -310,6 +339,7 @@ function importarDaBase() {
       else if (st === 'publicar' || st === 'revisar') { fretes.getRange(linha, m.status + 1).setValue('Encerrada antes de publicar'); cancelar++; }
     });
     Logger.log('%s nova(s), %s para fechar, %s encerrada(s) antes de publicar.', novas.length, fechar, cancelar);
+    if (novas.length || fechar || cancelar) frLog_('Planilha', `importarDaBase: ${novas.length} nova(s), ${fechar} para fechar, ${cancelar} encerrada(s) antes de publicar`);
     return { novas: novas.length, fechar, cancelar };
   } finally {
     lock.releaseLock();
@@ -337,6 +367,7 @@ function republicarAbertas() {
   });
   const novas = importarDaBase();
   Logger.log('%s carga(s) aberta(s) marcada(s) para REPUBLICAR; importacao: %s', marcadas, JSON.stringify(novas));
+  if (marcadas) frLog_('Planilha', `republicarAbertas: ${marcadas} carga(s) marcada(s) para REPUBLICAR`);
   return { marcadas, importacao: novas };
 }
 
@@ -364,6 +395,7 @@ function renovarAbertas() {
   });
   const imp = importarDaBase(); // traz as cargas novas e marca FECHAR as que encerraram
   Logger.log('%s para RENOVAR, %s com erro para tentar de novo, %s comecaram a contar; importacao: %s', renovar, tentar, comecou, JSON.stringify(imp));
+  if (renovar || tentar) frLog_('Planilha', `renovarAbertas: ${renovar} para RENOVAR, ${tentar} com erro para tentar de novo, ${comecou} comecaram a contar`);
   return { renovar, tentar, comecou, importacao: imp };
 }
 function ativarRenovacaoAutomatica() {
