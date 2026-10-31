@@ -73,3 +73,13 @@ o STATUS vira FECHAR -> a extensao desativa (ou exclui) na Fretebras.
   INCERTA - conferir / ERRO: ... e nunca republica linha com CODIGO.
 - Manual: pagina "Sincronizar com a planilha" > Ver o que vai acontecer > Executar. Automatico: marque "Sincronizar sozinha" (so com o Chrome aberto);
   no maximo N acoes por rodada; se o login da Fretebras cair, pausa e pede "Retomar".
+
+Republicar e renovar (versao 0.9.6)
+- STATUS REPUBLICAR: o frete antigo foi apagado; publica de novo, ignorando o CODIGO antigo e a memoria da extensao.
+  Apps Script: republicarAbertas marca REPUBLICAR as cargas ainda abertas na Base que ja tinham sido publicadas.
+- STATUS RENOVAR: a carga continua aberta; a extensao FECHA o frete antigo (pelo CODIGO; desativa ou exclui, conforme a pagina) e publica de novo.
+  Se nao conseguir fechar o antigo, NAO publica (evita duplicar). Apps Script: renovarAbertas marca RENOVAR o que foi publicado ha mais de
+  FR_RENOVAR_HORAS (coluna PUBLICADO EM, gravada quando vira Publicado); carga que fechou nao e renovada (vira FECHAR); linha com ERRO volta como REPUBLICAR.
+  ativarRenovacaoAutomatica liga o gatilho (a cada FR_RENOVAR_HORAS: 1, 2, 4, 6, 8 ou 12 horas). Cada renovacao leva ~1,5 min: escolha um
+  intervalo maior que (numero de cargas abertas x 1,5 min).
+- Depois de mudar o fretes-tudo.gs: Implantar > Gerenciar implantacoes > lapis > Nova versao (o doPost grava a hora de publicacao).

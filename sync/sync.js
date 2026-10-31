@@ -19,7 +19,7 @@ async function atualizar() {
   const deHoje = syncHistorico.filter(h => h.t >= hoje.getTime());
   const conta = (tipo, ok) => deHoje.filter(h => h.tipo === tipo && (ok ? !/^(ERRO|INCERTA)/.test(h.status) : /^(ERRO|INCERTA)/.test(h.status))).length;
   $('resumo-hist').textContent = syncHistorico.length ? `Hoje: ${conta('publicar', true)} publicado(s), ${conta('fechar', true)} fechado(s), ${conta('publicar', false) + conta('fechar', false)} com erro ou incerto(s).` : 'Nada ainda.';
-  $('hist').innerHTML = syncHistorico.slice(0, 100).map(h => `<tr><td>${esc(new Date(h.t).toLocaleString('pt-BR'))}</td><td>${h.tipo === 'publicar' ? 'Publicar' : 'Fechar'} (linha ${esc(h.linha)})</td><td>${esc(h.frete)}</td>
+  $('hist').innerHTML = syncHistorico.slice(0, 100).map(h => `<tr><td>${esc(new Date(h.t).toLocaleString('pt-BR'))}</td><td>${h.tipo === 'publicar' ? 'Publicar' : h.tipo === 'renovar' ? 'Renovar' : 'Fechar'} (linha ${esc(h.linha)})</td><td>${esc(h.frete)}</td>
     <td class="${/^(ERRO|INCERTA)/.test(h.status) ? 'err' : 'ok'}">${esc(h.status)}${h.nota ? ' — ' + esc(h.nota) : ''}</td><td>${esc(h.codigo)}</td></tr>`).join('');
   $('pausa').hidden = !syncEstado.pausado;
   $('motivo').textContent = syncEstado.motivo || '';
@@ -51,7 +51,7 @@ $('previa').onclick = async () => {
   if (r.error) { $('msg').textContent = ''; $('msg').className = 'err'; $('msg').textContent = r.error; return; }
   plano = r.plano;
   linhasTab = [
-    ...plano.acoes.map(a => ({ linha: a.linha, acao: a.tipo === 'publicar' ? 'PUBLICAR' : a.modo === 'excluir' ? 'EXCLUIR' : 'DESATIVAR', frete: a.tipo === 'publicar' ? `${a.row.origem} → ${a.row.destino}` : a.codigo, situacao: 'aguardando' })),
+    ...plano.acoes.map(a => ({ linha: a.linha, acao: a.tipo === 'publicar' ? 'PUBLICAR' : a.tipo === 'renovar' ? `RENOVAR (${a.modo === 'excluir' ? 'exclui' : 'desativa'} ${a.codigo} e publica de novo)` : a.modo === 'excluir' ? 'EXCLUIR' : 'DESATIVAR', frete: a.tipo !== 'fechar' ? `${a.row.origem} → ${a.row.destino}` : a.codigo, situacao: 'aguardando' })),
     ...plano.escritas.map(e => ({ linha: e.linha, acao: 'só atualizar a planilha', frete: '', situacao: e.status + (e.codigo ? ' ' + e.codigo : '') })),
   ];
   $('msg').className = '';
@@ -60,7 +60,7 @@ $('previa').onclick = async () => {
 };
 
 $('executar').onclick = async () => {
-  const pub = plano.acoes.filter(a => a.tipo === 'publicar').length, fec = plano.acoes.length - pub;
+  const pub = plano.acoes.filter(a => a.tipo !== 'fechar').length, fec = plano.acoes.filter(a => a.tipo !== 'publicar').length;
   if (!confirm(`Vai fazer DE VERDADE na Fretebras: publicar ${pub} frete(s) e fechar ${fec}. Continuar?`)) return;
   const ini = await send('sync-inicio');
   if (ini.error) { $('msg').textContent = ini.error; return; }
@@ -78,7 +78,7 @@ $('executar').onclick = async () => {
       t.situacao = r.pulada ? 'pulada: ' + r.motivo : r.status + (r.codigo ? ' ' + r.codigo : '') + (r.texto ? ' — ' + r.texto : '');
       t.cls = r.status === 'ERRO' || r.status === 'INCERTA' ? 'err' : 'ok';
       desenhar();
-      if (acao.tipo === 'publicar' && n < plano.acoes.length - 1) await pausa(cfg.pausaSeg * 1000);
+      if (acao.tipo !== 'fechar' && n < plano.acoes.length - 1) await pausa(cfg.pausaSeg * 1000);
       if (n === plano.acoes.length - 1) $('msg').textContent = 'Terminou.';
     }
   } finally { await send('sync-fim'); rodando = false; desenhar(); atualizar(); }

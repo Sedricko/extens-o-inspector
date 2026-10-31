@@ -457,6 +457,31 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
     await sw.evaluate(() => syncAuto());
     assert.deepStrictEqual([linhasPlanilha[0].status, linhasPlanilha[0].codigo], ['Publicado', 'SPGO-1770'], 'reconciliou com a memoria, sem publicar');
 
+    // REPUBLICAR: o frete antigo foi apagado na Fretebras; publica de novo, ignorando o codigo antigo e a memoria da extensao
+    linhasPlanilha.push(L('EXTREMA/MG', 'FRUTAL/MG', 'REPUBLICAR', 'OLD-1', { idcarga: 'rep1' }));
+    await sw.evaluate(async () => { const { lotePublicados: f = {} } = await chrome.storage.local.get('lotePublicados'); f['id:rep1'] = { code: 'OLD-1', quando: 1 }; await chrome.storage.local.set({ lotePublicados: f }); });
+    await sw.evaluate(() => syncAuto());
+    const rep = linhasPlanilha[linhasPlanilha.length - 1];
+    assert.deepStrictEqual([rep.status, rep.codigo], ['Publicado', 'SPGO-1770'], 'republicou e gravou o codigo novo (nao o OLD-1)');
+    linhasPlanilha.pop();
+
+    // RENOVAR: fecha o frete antigo (pelo codigo) e publica de novo; se nao conseguir fechar o antigo, NAO publica
+    linhasPlanilha.push(L('EXTREMA/MG', 'FRUTAL/MG', 'RENOVAR', 'MGMG-27DE', { idcarga: 'ren1' }));
+    const nFechou = fechou.length;
+    await sw.evaluate(() => syncAuto());
+    let ren = linhasPlanilha[linhasPlanilha.length - 1];
+    assert.deepStrictEqual([ren.status, ren.codigo], ['Publicado', 'SPGO-1770'], 'fechou o antigo e publicou de novo');
+    assert.deepStrictEqual(fechou.slice(nFechou), [{ acao: 'Desativar', cod: 'MGMG-27DE' }], 'desativou o antigo antes de publicar');
+    assert.strictEqual((await sw.evaluate(() => chrome.storage.local.get('syncHistorico'))).syncHistorico[0].tipo, 'renovar');
+    linhasPlanilha.pop();
+    linhasPlanilha.push(L('EXTREMA/MG', 'FRUTAL/MG', 'RENOVAR', 'SPSP-26E9', { idcarga: 'ren2' })); // esse codigo aparece em 2 fretes: nao fecha
+    await sw.evaluate(() => syncAuto());
+    ren = linhasPlanilha[linhasPlanilha.length - 1];
+    assert.match(ren.status, /^ERRO ao fechar o antigo/); assert.strictEqual(ren.codigo, 'SPSP-26E9', 'o codigo antigo continua na linha');
+    linhasPlanilha.pop();
+    const sem = await sw.evaluate(() => planoDeSync([{ linha: 2, status: 'RENOVAR', codigo: '', origem: 'A/MG', destino: 'B/MG' }], {}, {}));
+    assert.strictEqual(sem.escritas[0].status, 'REPUBLICAR', 'RENOVAR sem codigo antigo vira REPUBLICAR');
+
     // login/site fora do ar: pausa o automatico e devolve a linha como estava
     linhasPlanilha.push(L('EXTREMA/MG', 'FRUTAL/MG', 'PUBLICAR', '', { idcarga: 'x9' })); // mesma rota da linha 2, outra carga
     semFormulario = true;

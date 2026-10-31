@@ -112,22 +112,31 @@ const SYNC_FECHAR = ['fechar', 'fechado', 'excluir', 'desativar'];
 function planoDeSync(linhas, feitas, cfg) {
   const acoes = [], escritas = [];
   const jaPublicadas = new Map(); // conteudo -> linha, das que ja tem codigo
-  for (const l of linhas) if (linhaJaPublicada(l) && !SYNC_FECHAR.includes(linhaNorm(l.status))) jaPublicadas.set(linhaChave(l), l.linha);
+  for (const l of linhas) if (linhaJaPublicada(l) && !SYNC_FECHAR.includes(linhaNorm(l.status)) && linhaNorm(l.status) !== 'republicar') jaPublicadas.set(linhaChave(l), l.linha);
   const vistas = new Map();
   const esc = (l, status, codigo) => ({ linha: l.linha, status, ...(codigo !== undefined && { codigo }), esperado: [l.status], confere: { origem: l.origem, destino: l.destino } });
 
   for (const l of linhas) {
     const st = linhaNorm(l.status);
-    if (st === 'publicar') {
-      const chave = linhaChave(l), f = feitas[chave];
-      if (l.codigo) { escritas.push(esc(l, 'Publicado')); continue; }                  // ja tem codigo: nunca republica
-      if (f) { escritas.push(f.incerta ? esc(l, 'INCERTA - conferir') : esc(l, 'Publicado', f.code || '')); continue; }
-      if (jaPublicadas.has(chave)) { escritas.push(esc(l, `ERRO: igual a linha ${jaPublicadas.get(chave)}, que ja esta publicada`)); continue; }
+    if (st === 'publicar' || st === 'republicar') {
+      // REPUBLICAR = "o frete antigo foi apagado, publique de novo": ignora o CODIGO antigo e o que a extensao lembra
+      const chave = linhaChave(l), f = feitas[chave], de_novo = st === 'republicar';
+      if (!de_novo) {
+        if (l.codigo) { escritas.push(esc(l, 'Publicado')); continue; }                  // ja tem codigo: nunca republica
+        if (f) { escritas.push(f.incerta ? esc(l, 'INCERTA - conferir') : esc(l, 'Publicado', f.code || '')); continue; }
+        if (jaPublicadas.has(chave)) { escritas.push(esc(l, `ERRO: igual a linha ${jaPublicadas.get(chave)}, que ja esta publicada`)); continue; }
+      }
       if (vistas.has(chave)) { escritas.push(esc(l, `ERRO: igual a linha ${vistas.get(chave)}`)); continue; }
       vistas.set(chave, l.linha);
       const { erros } = linhaParaPassos(l);
       if (erros.length) { escritas.push(esc(l, 'ERRO: ' + erros.join('; '))); continue; }
       acoes.push({ tipo: 'publicar', linha: l.linha, row: l, statusOriginal: l.status });
+    } else if (st === 'renovar') {
+      // RENOVAR = a carga continua aberta: fecha o frete antigo (pelo CODIGO) e publica de novo
+      if (!l.codigo) { escritas.push(esc(l, 'REPUBLICAR')); continue; } // sem codigo antigo, nao ha o que fechar
+      const { erros } = linhaParaPassos(l);
+      if (erros.length) { escritas.push(esc(l, 'ERRO: ' + erros.join('; '))); continue; }
+      acoes.push({ tipo: 'renovar', linha: l.linha, codigo: l.codigo, modo: (cfg && cfg.fechar) || 'desativar', row: l, statusOriginal: l.status });
     } else if (SYNC_FECHAR.includes(st)) {
       if (!l.codigo) { escritas.push(esc(l, 'ERRO: falta o CODIGO para fechar')); continue; }
       const modo = st === 'excluir' ? 'excluir' : st === 'desativar' ? 'desativar' : (cfg && cfg.fechar) || 'desativar';

@@ -12,6 +12,8 @@
  *
  * Funcoes: prepararTudo, importarDaBase, ativarImportacaoAutomatica / desativarImportacaoAutomatica (a cada 10 min),
  *          ligarPublicacaoAutomatica / desligarPublicacaoAutomatica (cargas importadas entram como PUBLICAR ou REVISAR),
+ *          republicarAbertas (as cargas ainda abertas que ja tinham sido publicadas voltam como REPUBLICAR, sem o codigo antigo),
+ *          renovarAbertas (cargas abertas ha mais de FR_RENOVAR_HORAS viram RENOVAR) e ativar/desativarRenovacaoAutomatica,
  *          mostrarSenha, gerarSenha (troca a senha), configurarAbaFretes, testarAcesso.
  *
  * Regra de carga ativa (a mesma do Autoresponder): StatusOferta ATIVA, Operacao diferente de so FROTA, nao cancelada, nao FINALIZADA,
@@ -21,8 +23,9 @@
 const FR_ID = 'COLE_AQUI_O_ID_DA_PLANILHA';   // planilha onde fica a aba FRETES (a que a extensao le e escreve)
 const FR_ID_BASE = '';                        // planilha onde ficam as abas Base e Mot; vazio = a mesma do FR_ID
 const FR_ABA = 'FRETES';
-const FR_COLUNAS = ['ORIGEM', 'DESTINO', 'PRODUTO', 'VALOR', 'PESO', 'PALETES', 'VEÍCULO', 'CARROCERIA', 'RASTREADA', 'LONA', 'PAGAMENTO', 'OBSERVAÇÕES', 'STATUS', 'CÓDIGO', 'IDCARGA'];
+const FR_COLUNAS = ['ORIGEM', 'DESTINO', 'PRODUTO', 'VALOR', 'PESO', 'PALETES', 'VEÍCULO', 'CARROCERIA', 'RASTREADA', 'LONA', 'PAGAMENTO', 'OBSERVAÇÕES', 'STATUS', 'CÓDIGO', 'IDCARGA', 'PUBLICADO EM'];
 const FR_LINHAS_ATE = 500;
+const FR_RENOVAR_HORAS = 1; // de quantas em quantas horas as cargas ABERTAS sao renovadas (1, 2, 4, 6, 8 ou 12)
 const FR_IMP = { BASE: 'Base', MOT: 'Mot', MAX_NOVAS: 50, VENCE_HORAS: 24 }; // MAX_NOVAS: cargas novas por rodada (10 em 10 min)
 
 const frNorm_ = t => String(t == null ? '' : t).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -61,7 +64,7 @@ function configurarAbaFretes() {
   aba.setColumnWidths(7, 2, 130);
   aba.setColumnWidths(9, 2, 90);
   aba.setColumnWidths(11, 2, 170);
-  aba.setColumnWidths(13, 3, 150);
+  aba.setColumnWidths(13, 4, 150);
 
   const n = FR_LINHAS_ATE - 1;
   const lista = (col, itens, estrito) => aba.getRange(2, col, n, 1).setDataValidation(
@@ -79,6 +82,7 @@ function configurarAbaFretes() {
   aba.getRange(2, 7, n, 2).clearDataValidations();
   aba.getRange(2, 11, n, 1).clearDataValidations();
   const todas = aba.getRange(2, 1, n, FR_COLUNAS.length);
+  aba.getRange(2, 16, n, 1).setNumberFormat('dd/MM/yyyy HH:mm');
   aba.setConditionalFormatRules([
     SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=OR($N2<>"";LEFT($M2;8)="Publicad")').setBackground('#dcfce7').setRanges([todas]).build(),
     SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=AND($A2<>"";COUNTIFS($A$2:$A;$A2;$B$2:$B;$B2;$C$2:$C;$C2;$E$2:$E;$E2;$G$2:$G;$G2;$H$2:$H;$H2;$K$2:$K;$K2)>1)').setBackground('#fed7aa').setRanges([todas]).build(),
@@ -141,6 +145,7 @@ function doPost(e) {
     const col = k => cab.indexOf(k) + 1;
     ['status', 'codigo', 'origem', 'destino'].forEach(k => { if (!col(k)) throw new Error('falta a coluna ' + k.toUpperCase()); });
     const gravadas = [], ignoradas = [];
+    const colHora = col('publicadoem'); // quando virou "Publicado": a renovacao conta a partir daqui
     (corpo.atualizacoes || []).forEach(u => {
       const linha = Number(u.linha);
       if (!(linha >= 2 && linha <= aba.getLastRow())) return ignoradas.push({ linha: u.linha, motivo: 'linha fora da planilha' });
@@ -151,6 +156,7 @@ function doPost(e) {
         return ignoradas.push({ linha, motivo: 'a linha nao e mais a mesma' });
       aba.getRange(linha, col('status')).setValue(String(u.status));
       if (u.codigo !== undefined) aba.getRange(linha, col('codigo')).setValue(String(u.codigo));
+      if (colHora && frNorm_(u.status) === 'publicado') aba.getRange(linha, colHora).setValue(new Date());
       gravadas.push(linha);
     });
     return frJson_({ ok: true, gravadas, ignoradas });
@@ -308,6 +314,65 @@ function importarDaBase() {
   } finally {
     lock.releaseLock();
   }
+}
+
+// Marca REPUBLICAR as cargas que continuam ABERTAS na Base e ja tinham sido publicadas (por exemplo, voce apagou os fretes na Fretebras).
+// Limpa o CODIGO antigo; a extensao publica de novo e grava o codigo novo. Em seguida traz as cargas novas da Base.
+function republicarAbertas() {
+  const fretes = frAba_();
+  const cargas = frLerBase_(frPlanilhaBase_());
+  const cab = fretes.getRange(1, 1, 1, fretes.getLastColumn()).getValues()[0];
+  const m = frCabecalho_(cab);
+  ['status', 'codigo', 'idcarga'].forEach(k => { if (m[k] === undefined) throw new Error('falta a coluna ' + k.toUpperCase() + ' na aba FRETES (rode configurarAbaFretes)'); });
+  const dados = fretes.getLastRow() > 1 ? fretes.getRange(2, 1, fretes.getLastRow() - 1, cab.length).getValues() : [];
+  const JA_PUBLICADAS = ['publicado', 'desativado', 'excluido', 'nao encontrado', 'fechar', 'desativar', 'excluir'];
+  let marcadas = 0;
+  dados.forEach((r, i) => {
+    const id = String(r[m.idcarga] || '').trim(), c = cargas[id], st = frNorm_(r[m.status]);
+    if (!c || !c.ativa) return;                                   // carga que fechou nao volta
+    if (!JA_PUBLICADAS.includes(st) && st.indexOf('erro') !== 0) return;
+    fretes.getRange(i + 2, m.status + 1).setValue('REPUBLICAR');
+    fretes.getRange(i + 2, m.codigo + 1).setValue('');
+    marcadas++;
+  });
+  const novas = importarDaBase();
+  Logger.log('%s carga(s) aberta(s) marcada(s) para REPUBLICAR; importacao: %s', marcadas, JSON.stringify(novas));
+  return { marcadas, importacao: novas };
+}
+
+// Renovacao das cargas ABERTAS: a cada FR_RENOVAR_HORAS, o frete publicado ha mais tempo que isso vira RENOVAR (a extensao fecha o antigo
+// e publica de novo). Carga que fechou nao e renovada: o importador a marca FECHAR. Linha com ERRO volta como REPUBLICAR.
+function renovarAbertas() {
+  const fretes = frAba_();
+  const cargas = frLerBase_(frPlanilhaBase_());
+  const cab = fretes.getRange(1, 1, 1, fretes.getLastColumn()).getValues()[0];
+  const m = frCabecalho_(cab);
+  ['status', 'codigo', 'idcarga', 'publicadoem'].forEach(k => { if (m[k] === undefined) throw new Error('falta a coluna ' + k.toUpperCase() + ' na aba FRETES (rode configurarAbaFretes)'); });
+  const dados = fretes.getLastRow() > 1 ? fretes.getRange(2, 1, fretes.getLastRow() - 1, cab.length).getValues() : [];
+  const limite = Date.now() - (FR_RENOVAR_HORAS * 60 - 10) * 60e3; // 10 min de folga: o gatilho nao roda no segundo exato
+  let renovar = 0, tentar = 0, comecou = 0;
+  dados.forEach((r, i) => {
+    const id = String(r[m.idcarga] || '').trim(), c = cargas[id], st = frNorm_(r[m.status]), linha = i + 2;
+    if (!c || !c.ativa) return;
+    if (st === 'publicado' && String(r[m.codigo]).trim()) {
+      const t = r[m.publicadoem], ts = t instanceof Date ? t.getTime() : t ? new Date(t).getTime() : NaN;
+      if (isNaN(ts)) { fretes.getRange(linha, m.publicadoem + 1).setValue(new Date()); comecou++; return; } // sem hora: comeca a contar agora
+      if (ts <= limite) { fretes.getRange(linha, m.status + 1).setValue('RENOVAR'); renovar++; }
+    } else if (st.indexOf('erro') === 0) {
+      fretes.getRange(linha, m.status + 1).setValue('REPUBLICAR'); fretes.getRange(linha, m.codigo + 1).setValue(''); tentar++;
+    }
+  });
+  const imp = importarDaBase(); // traz as cargas novas e marca FECHAR as que encerraram
+  Logger.log('%s para RENOVAR, %s com erro para tentar de novo, %s comecaram a contar; importacao: %s', renovar, tentar, comecou, JSON.stringify(imp));
+  return { renovar, tentar, comecou, importacao: imp };
+}
+function ativarRenovacaoAutomatica() {
+  desativarRenovacaoAutomatica();
+  ScriptApp.newTrigger('renovarAbertas').timeBased().everyHours(FR_RENOVAR_HORAS).create();
+  Logger.log('Renovacao automatica ligada: a cada %s hora(s).', FR_RENOVAR_HORAS);
+}
+function desativarRenovacaoAutomatica() {
+  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'renovarAbertas').forEach(t => ScriptApp.deleteTrigger(t));
 }
 
 function ligarPublicacaoAutomatica() { PropertiesService.getScriptProperties().setProperty('FR_AUTO', 'sim'); Logger.log('Cargas importadas entram como PUBLICAR: a extensao publica sozinha.'); }

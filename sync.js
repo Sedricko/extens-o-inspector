@@ -87,7 +87,7 @@ async function syncAcao(acao, base = FB.site) {
   if ((await syncEstado()).rodando) await syncEstadoSet({ rodando: Date.now() }); // "estou vivo": uma rodada longa nao e dada como travada
   if (!r.pulada) await syncHistoria({
     tipo: acao.tipo, linha: acao.linha, status: r.status, nota: r.texto || '',
-    frete: acao.tipo === 'publicar' ? `${acao.row.origem} → ${acao.row.destino}` : acao.codigo,
+    frete: acao.tipo !== 'fechar' ? `${acao.row.origem} → ${acao.row.destino}` : acao.codigo,
     codigo: r.codigo || (acao.tipo === 'fechar' ? acao.codigo : ''),
   });
   return r;
@@ -95,15 +95,21 @@ async function syncAcao(acao, base = FB.site) {
 
 async function syncAcaoFeita(acao, base) {
   const cfg = await syncCfg();
-  const publicar = acao.tipo === 'publicar';
+  const renovar = acao.tipo === 'renovar';
+  const publicar = acao.tipo === 'publicar' || renovar;
   const conf = { origem: acao.row.origem, destino: acao.row.destino };
-  const reservado = publicar ? 'PUBLICANDO...' : 'FECHANDO...';
+  const reservado = renovar ? 'RENOVANDO...' : publicar ? 'PUBLICANDO...' : 'FECHANDO...';
+  const aviso = renovar ? ' (o frete antigo ja foi fechado)' : '';
   const gravar = (status, codigo) => syncGravarFinal(cfg, { linha: acao.linha, status, ...(codigo !== undefined && { codigo }), esperado: [reservado], confere: conf });
 
   const c = await planilhaPost(cfg, [{ linha: acao.linha, status: reservado, esperado: [acao.statusOriginal], confere: conf }]);
   if (!c.gravadas.includes(acao.linha)) return { pulada: true, motivo: 'a linha mudou na planilha ou outra sincronizacao ja pegou' };
 
   try {
+    if (renovar) { // primeiro fecha o frete antigo; se nao conseguir, nao publica (evita duplicar)
+      const f = await fbClose(acao.codigo, acao.modo, base);
+      if (!f.ok) { await gravar('ERRO ao fechar o antigo: ' + String(f.error).slice(0, 150)); return { status: 'ERRO', texto: f.error }; }
+    }
     if (publicar) {
       const r = await fbFillTest(base, true, acao.row);
       const chave = linhaChave(acao.row);
@@ -120,7 +126,7 @@ async function syncAcaoFeita(acao, base) {
         await gravar('Publicado', r.code || '');
         return { status: 'Publicado', codigo: r.code, notas: r.notes };
       }
-      await gravar('ERRO: ' + String(r.error || 'falhou').slice(0, 180) + (r.step ? ` (passo ${r.step.slice(0, 60)})` : ''), '');
+      await gravar('ERRO' + aviso + ': ' + String(r.error || 'falhou').slice(0, 150) + (r.step ? ` (passo ${r.step.slice(0, 60)})` : ''), '');
       return { status: 'ERRO', texto: r.error };
     }
     const r = await fbClose(acao.codigo, acao.modo, base);
@@ -153,7 +159,7 @@ async function syncAuto(base = FB.site) {
       const r = await syncAcao(acao, base);
       await syncLog(`linha ${acao.linha} ${acao.tipo}: ${r.pulada ? 'pulada (' + r.motivo + ')' : r.status + (r.codigo ? ' ' + r.codigo : '')}`, r.status === 'ERRO' ? 'erro' : 'info');
       feitos.push(r);
-      if (acao.tipo === 'publicar' && n < Math.min(plano.acoes.length, cfg.limite) - 1) await new Promise(res => setTimeout(res, cfg.pausaSeg * 1000));
+      if (acao.tipo !== 'fechar' && n < Math.min(plano.acoes.length, cfg.limite) - 1) await new Promise(res => setTimeout(res, cfg.pausaSeg * 1000));
     }
     if (plano.acoes.length > cfg.limite) await syncLog(`${plano.acoes.length - cfg.limite} acao(oes) ficaram para a proxima rodada (limite ${cfg.limite})`);
   } catch (e) {
