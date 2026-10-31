@@ -3,8 +3,17 @@ async function recording(id, final) {
   const all = await chrome.storage.local.get(null);
   const keys = Object.keys(all).filter(k => k.startsWith(`rec:${id}:`));
   const steps = keys.map(k => all[k]).sort((a, b) => a.t - b.t);
-  // Digitar manda um passo por tecla: fica so o ultimo valor de cada sequencia no mesmo campo.
-  const timeline = steps.filter((s, i) => !(s.type === 'field' && steps[i + 1] && steps[i + 1].type === 'field' && steps[i + 1].selector === s.selector))
+  // Digitar manda um passo por tecla: fica so o ultimo valor de cada sequencia no mesmo campo
+  // (o que aparece na tela no meio, como "3/30 caracteres", nao quebra a sequencia; clique e chamada de rede quebram).
+  const typing = (s, i) => {
+    if (s.type !== 'field') return false;
+    for (const n of steps.slice(i + 1)) {
+      if (n.type === 'field') return n.selector === s.selector;
+      if (n.type !== 'appeared' && n.type !== 'storage') return false;
+    }
+    return false;
+  };
+  const timeline = steps.filter((s, i) => !typing(s, i))
     .map(({ recId, ...s }) => ({ ...s, sec: +((s.t - id) / 1000).toFixed(1) }));
   if (final) await chrome.storage.local.remove(keys);
   return { start: new Date(+id).toISOString(), end: new Date(steps.length ? steps[steps.length - 1].t : +id).toISOString(), timeline };

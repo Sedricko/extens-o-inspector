@@ -27,6 +27,7 @@ const SPA = `<!doctype html><title>Criar frete</title><body><main>
 <input id="pw" type="password" placeholder="Senha">
 <button id="criar">Criar frete</button></main>
 <script>
+  orig.addEventListener('input', () => sessionStorage.setItem('sentryReplaySession', Date.now())); // ruido entre as teclas
   document.getElementById('criar').onclick = async () => {
     const body = { origem: orig.value, peso: +peso.value, veiculo: veic.value };
     const r = await (await fetch('/api/frete', { method: 'POST', body: JSON.stringify(body) })).json();
@@ -144,6 +145,7 @@ const SPA = `<!doctype html><title>Criar frete</title><body><main>
     assert.ok(req.reqBody.includes('"origem":"Jacarei"') && req.resBody.includes('SPMG-4BC4'), JSON.stringify(req));
     assert.ok(tl.indexOf(click) < tl.indexOf(req), 'linha do tempo em ordem');
     assert.ok(tl.some(s => s.type === 'storage' && s.key === 'ultimoFrete' && s.value === 'SPMG-4BC4'));
+    assert.ok(!tl.some(s => s.type === 'storage' && /sentry/.test(s.key)), 'memoria do Sentry e ruido');
     assert.ok(tl.some(s => s.type === 'screen' && s.route === '/app/criado'));
     // depois da recarga
     assert.ok(tl.some(s => s.type === 'screen' && s.route === '/app/fretes/SPMG-4BC4' && s.reloaded), 'continuou depois do F5');

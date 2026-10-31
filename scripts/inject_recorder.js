@@ -84,11 +84,13 @@
   const SP = Storage.prototype, setItem = SP.setItem, removeItem = SP.removeItem;
   const where = st => (st === localStorage ? 'localStorage' : 'sessionStorage');
   const stVal = (k, v) => (/token|auth|session|senha|password|secret/i.test(k) ? '***' : String(v).slice(0, 5000));
+  // Memoria de ferramentas de monitoramento (Sentry, analytics) muda a cada clique e nao diz nada do site.
+  const ST_NOISE = /^mspa-rec$|sentry|^apc_|^_ga|amplitude|mixpanel|segment|hotjar|^_hj|clarity/i;
   const mySet = function (k, v) {
-    if (k !== 'mspa-rec' && this.getItem(k) !== String(v)) add('storage', { store: where(this), key: k, value: stVal(k, v) });
+    if (!ST_NOISE.test(k) && this.getItem(k) !== String(v)) add('storage', { store: where(this), key: k, value: stVal(k, v) });
     return setItem.apply(this, arguments);
   };
-  const myRemove = function (k) { if (k !== 'mspa-rec') add('storage', { store: where(this), key: k, removed: true }); return removeItem.apply(this, arguments); };
+  const myRemove = function (k) { if (!ST_NOISE.test(k)) add('storage', { store: where(this), key: k, removed: true }); return removeItem.apply(this, arguments); };
 
   const host = document.createElement('div');
   host.id = 'mspa-rec';
