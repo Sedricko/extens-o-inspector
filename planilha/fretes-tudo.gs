@@ -23,10 +23,6 @@ const FR_ID_BASE = '';                        // planilha onde ficam as abas Bas
 const FR_ABA = 'FRETES';
 const FR_COLUNAS = ['ORIGEM', 'DESTINO', 'PRODUTO', 'VALOR', 'PESO', 'PALETES', 'VEÍCULO', 'CARROCERIA', 'RASTREADA', 'LONA', 'PAGAMENTO', 'OBSERVAÇÕES', 'STATUS', 'CÓDIGO', 'IDCARGA'];
 const FR_LINHAS_ATE = 500;
-const FR_VEICULOS = ['Carreta', 'Carreta LS', 'Truck', 'Bitruck', 'Vanderléia', 'Bitrem', 'Rodotrem', 'Bitrenzão', 'Toco', '3/4', 'Van', 'VUC'];
-const FR_CARROCERIAS = ['Sider', 'Baú', 'Baú Frigorífico', 'Baú Refrigerado', 'Graneleiro', 'Grade Baixa', 'Caçamba', 'Plataforma', 'Prancha',
-  'Apenas Cavalo', 'Bug Porta Container', 'Cavaqueira', 'Cegonheiro', 'Gaiola', 'Hopper', 'Munck', 'Silo', 'Tanque'];
-const FR_PAGAMENTOS = ['Outro', 'Pix', 'TED', 'Crédito em cartão', 'Cheque', 'E-frete'];
 const FR_IMP = { BASE: 'Base', MOT: 'Mot', MAX_NOVAS: 50, VENCE_HORAS: 24 }; // MAX_NOVAS: cargas novas por rodada (10 em 10 min)
 
 const frNorm_ = t => String(t == null ? '' : t).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -77,17 +73,17 @@ function configurarAbaFretes() {
   formula(3, '=LEN(C2)<=30', 'O site aceita no maximo 30 caracteres e nao aceita o caractere |');
   lista(4, ['A combinar'], true);
   formula(5, '=OR(E2="";REGEXMATCH(E2&"";"^\\s*\\d+([.,]\\d+)?"))', 'Peso em toneladas, de 1 a 50. Ex.: 25 Ton');
-  lista(7, FR_VEICULOS, false);
-  lista(8, FR_CARROCERIAS, false);
   lista(9, ['Sim', 'Não'], true);
   lista(10, ['Não'], true);
-  lista(11, FR_PAGAMENTOS, false);
+  // VEICULO, CARROCERIA e PAGAMENTO ficam sem lista: o importador escreve combinacoes ("Bau + Sider") e a lista as marcaria como invalidas
+  aba.getRange(2, 7, n, 2).clearDataValidations();
+  aba.getRange(2, 11, n, 1).clearDataValidations();
   const todas = aba.getRange(2, 1, n, FR_COLUNAS.length);
   aba.setConditionalFormatRules([
     SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=OR($N2<>"";LEFT($M2;8)="Publicad")').setBackground('#dcfce7').setRanges([todas]).build(),
     SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=AND($A2<>"";COUNTIFS($A$2:$A;$A2;$B$2:$B;$B2;$C$2:$C;$C2;$E$2:$E;$E2;$G$2:$G;$G2;$H$2:$H;$H2;$K$2:$K;$K2)>1)').setBackground('#fed7aa').setRanges([todas]).build(),
   ]);
-  Logger.log('Aba %s pronta (colunas, listas de opcoes e cores).', FR_ABA);
+  Logger.log('Aba %s pronta (colunas, avisos e cores).', FR_ABA);
 }
 
 // Um clique: confere o acesso, prepara a aba, deixa a publicacao automatica DESLIGADA, garante a senha e importa as cargas (entram como REVISAR).
