@@ -84,6 +84,7 @@ async function syncAcao(acao, base = FB.site) {
   const r = await syncAcaoFeita(acao, base); // lanca se o login/site cair: nesse caso nada e descontado nem registrado
   const { syncFila = 0 } = await chrome.storage.local.get('syncFila');
   await syncBadge(Math.max(0, syncFila - 1));
+  if ((await syncEstado()).rodando) await syncEstadoSet({ rodando: Date.now() }); // "estou vivo": uma rodada longa nao e dada como travada
   if (!r.pulada) await syncHistoria({
     tipo: acao.tipo, linha: acao.linha, status: r.status, nota: r.texto || '',
     frete: acao.tipo === 'publicar' ? `${acao.row.origem} → ${acao.row.destino}` : acao.codigo,

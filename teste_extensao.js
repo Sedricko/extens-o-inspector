@@ -413,8 +413,11 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
 
     // reserva: se a linha mudar na planilha depois do plano, a acao nao acontece
     linhasPlanilha[0].status = 'rascunho';
+    await sw.evaluate(() => syncEstadoSet({ rodando: 1 })); // rodada "antiga": cada acao feita renova o relogio (rodada longa nao e dada como travada)
     const pulou = await sw.evaluate(a => syncAcao(a), plano.acoes[0]);
     assert.ok(pulou.pulada, JSON.stringify(pulou));
+    assert.ok((await sw.evaluate(() => syncEstado())).rodando > Date.now() - 20000, 'a acao renovou o relogio da rodada');
+    await sw.evaluate(() => syncEstadoSet({ rodando: 0 }));
     linhasPlanilha[0].status = 'PUBLICAR';
 
     // rodada automatica: no maximo 2 acoes por vez (limite), reserva e devolve STATUS/CODIGO

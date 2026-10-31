@@ -27,7 +27,7 @@ const FR_VEICULOS = ['Carreta', 'Carreta LS', 'Truck', 'Bitruck', 'Vanderléia',
 const FR_CARROCERIAS = ['Sider', 'Baú', 'Baú Frigorífico', 'Baú Refrigerado', 'Graneleiro', 'Grade Baixa', 'Caçamba', 'Plataforma', 'Prancha',
   'Apenas Cavalo', 'Bug Porta Container', 'Cavaqueira', 'Cegonheiro', 'Gaiola', 'Hopper', 'Munck', 'Silo', 'Tanque'];
 const FR_PAGAMENTOS = ['Outro', 'Pix', 'TED', 'Crédito em cartão', 'Cheque', 'E-frete'];
-const FR_IMP = { BASE: 'Base', MOT: 'Mot', MAX_NOVAS: 10, VENCE_HORAS: 24 };
+const FR_IMP = { BASE: 'Base', MOT: 'Mot', MAX_NOVAS: 50, VENCE_HORAS: 24 }; // MAX_NOVAS: cargas novas por rodada (10 em 10 min)
 
 const frNorm_ = t => String(t == null ? '' : t).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
 const frChaveCol_ = h => frNorm_(h).replace(/[^a-z]/g, '');
