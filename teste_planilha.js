@@ -1,11 +1,8 @@
-// Testa os scripts do Google Sheets (planilha/*.gs) com um simulador minimo do Google. Rodar: node teste_planilha.js
+// Testa planilha/fretes-tudo.gs (projeto solto: sem planilha "ativa" e sem janelas) com um simulador minimo do Google. Rodar: node teste_planilha.js
 const assert = require('assert'), fs = require('fs'), vm = require('vm');
 const dia = 864e5, agora = Date.now();
 const sheets = {
-  FRETES: [
-    ['ORIGEM', 'DESTINO', 'PRODUTO', 'VEÍCULO', 'STATUS', 'CÓDIGO'],
-    ['JACAREI/SP', 'ATIBAIA/SP', 'Y', 'Carreta', 'Publicado', 'AB-1'],
-  ],
+  FRETES: [['ORIGEM', 'DESTINO', 'PRODUTO', 'VEÍCULO', 'STATUS', 'CÓDIGO']],
   Base: [
     ['idCarga', 'StatusOferta', 'Operacao', 'DtHrCarregamento', 'TpProduto', 'CargaRastreada', 'TpVeiculo', 'TpCarroceria', 'QtdPallets', 'CidadeOrigem', 'UfOrigem', 'CidadeDestino', 'UfDestino', 'PesoCarga', 'Observacoes', 'fx_StatusCarga', 'Cliente'],
     ['a1', 'ATIVA', 'FROTA , TERCEIRO , AGREGADO', new Date(agora + dia), 'EMBALAGEM', 'SIM', 'CAVALO TRUCADO , CAVALO TOCO', 'BAÚ , SIDER', 28, 'EXTREMA', 'MG', 'FRUTAL', 'MG', 25000, 'NECESSARIO 6 CINTAS', 'CARGA EM ABERTO', 'CLIENTE SECRETO'],
@@ -22,106 +19,105 @@ const sheets = {
   ],
   Mot: [['idCarga', 'idDados', 'Situacao', 'CPFMotorista'], ['a4', 'x', 'FECHADO', '000.000.000-00'], ['a11', 'y', 'CANCELADO', '1']],
 };
-const props = {};
-const triggers = [], logs = [];
-const planilha = {
-  getSheetByName: n => (sheets[n] ? sheet(n) : null),
-  toast() {},
-};
+const props = {}, triggers = [], logs = [];
+const chain = () => new Proxy(function () {}, { get: (t, p) => (p === 'then' ? undefined : chain()), apply: () => chain() }); // formatacao: aceita qualquer chamada
+const comFallback = o => new Proxy(o, { get: (t, p) => (p in t ? t[p] : chain()) });
 const sheet = nome => {
   const d = sheets[nome];
-  return {
+  return comFallback({
     getName: () => nome,
     getDataRange: () => ({ getValues: () => d.map(r => r.slice()) }),
     getLastColumn: () => Math.max(...d.map(r => r.length)),
     getLastRow: () => d.length,
-    getRange: (l, c, nl = 1, nc = 1) => ({
+    getRange: (l, c, nl = 1, nc = 1) => comFallback({
       getValues: () => Array.from({ length: nl }, (_, i) => Array.from({ length: nc }, (_, j) => (d[l - 1 + i] && d[l - 1 + i][c - 1 + j] !== undefined ? d[l - 1 + i][c - 1 + j] : ''))),
       getValue: () => (d[l - 1] && d[l - 1][c - 1] !== undefined ? d[l - 1][c - 1] : ''),
       setValue: v => { (d[l - 1] = d[l - 1] || [])[c - 1] = v; },
-      setValues: m => m.forEach((row, i) => row.forEach((v, j) => { (d[l - 1 + i] = d[l - 1 + i] || [])[c - 1 + j] = v; })),
+      setValues: m => { m.forEach((row, i) => row.forEach((v, j) => { (d[l - 1 + i] = d[l - 1 + i] || [])[c - 1 + j] = v; })); return chain(); },
     }),
-  };
+  });
 };
+const planilha = { getSheetByName: n => (sheets[n] ? sheet(n) : null), insertSheet: n => { sheets[n] = []; return sheet(n); } };
 const ctx = vm.createContext({
-  Logger: { log: (f, ...a) => logs.push(String(f).replace(/%s/g, () => a.shift())) },
   JSON, String, Number, Error, Date, Math, Set, Object, Array, isFinite, isNaN, console,
+  Logger: { log: (f, ...a) => logs.push(String(f).replace(/%s/g, () => a.shift())) },
   Utilities: { getUuid: () => require('crypto').randomUUID() },
   PropertiesService: { getScriptProperties: () => ({ getProperty: k => props[k], setProperty: (k, v) => { props[k] = v; } }) },
-  SpreadsheetApp: { getActiveSpreadsheet: () => planilha, getActive: () => planilha, getUi: () => ({ alert() {} }), openById: id => { if (id !== 'ID_TESTE') throw new Error('Unexpected error while getting the method or property openById'); return planilha; } },
+  // projeto solto: nao existe planilha "ativa" nem janelas (getUi); so openById
+  SpreadsheetApp: { openById: id => { if (id !== 'ID_TESTE') throw new Error('Unexpected error while getting the method or property openById'); return planilha; }, newDataValidation: () => chain(), newConditionalFormatRule: () => chain() },
   LockService: { getScriptLock: () => ({ tryLock: () => true, waitLock() {}, releaseLock() {} }) },
   ContentService: { MimeType: { JSON: 'json' }, createTextOutput: t => ({ setMimeType: () => t }) },
-  ScriptApp: { getService: () => ({ getUrl: () => '' }), getProjectTriggers: () => triggers, deleteTrigger: t => triggers.splice(triggers.indexOf(t), 1),
+  ScriptApp: { getProjectTriggers: () => triggers, deleteTrigger: t => triggers.splice(triggers.indexOf(t), 1),
     newTrigger: fn => ({ timeBased: () => ({ everyMinutes: () => ({ create: () => triggers.push({ getHandlerFunction: () => fn }) }) }) }) },
 });
-// o usuario cola os arquivos no mesmo projeto: aqui os 3 (o do usuario nao entra; so conferimos que nao ha nomes repetidos entre os nossos)
-const carregar = (f, troca = x => x) => vm.runInContext(troca(fs.readFileSync(`${__dirname}/planilha/${f}`, 'utf8')).replace(/^const /gm, 'var '), ctx);
-for (const f of ['fretes-config.gs', 'fretes-importar.gs']) carregar(f); // projeto da planilha (menu, importador)
-// o aplicativo da web fica em outro projeto: aqui sem trocar o ID, para ver a mensagem de erro
-carregar('fretes-api.gs');
-const semId = JSON.parse(vm.runInContext('doGet', ctx)({ parameter: { token: 'x' } }));
-assert.ok(semId.ok === false && /troque FRAPI_PLANILHA_ID/.test(semId.erro) || /senha invalida/.test(semId.erro), JSON.stringify(semId));
-carregar('fretes-api.gs', t => t.replace('COLE_AQUI_O_ID_DA_PLANILHA', 'ID_TESTE'));
-vm.runInContext("PropertiesService.getScriptProperties().setProperty('SENHA', 'x')", ctx); // limpa
-
+const fonte = fs.readFileSync(`${__dirname}/planilha/fretes-tudo.gs`, 'utf8');
+const carregar = t => vm.runInContext(t.replace(/^const /gm, 'var '), ctx);
 const run = c => { const r = vm.runInContext(c, ctx); return r && typeof r === 'object' ? JSON.parse(JSON.stringify(r)) : r; }; // copia para fora do simulador
+const get = t => JSON.parse(vm.runInContext('doGet', ctx)({ parameter: { token: t } }));
+const post = o => JSON.parse(vm.runInContext('doPost', ctx)({ postData: { contents: JSON.stringify(o) } }));
+
+// sem trocar o ID: a mensagem diz o que fazer
+carregar(fonte);
+assert.match(get('x').erro, /senha invalida|troque FR_ID/);
+props.SENHA = 'x';
+assert.match(get('x').erro, /troque FR_ID/);
+delete props.SENHA;
+carregar(fonte.replace('COLE_AQUI_O_ID_DA_PLANILHA', 'ID_TESTE'));
+
+// ---- preparacao e senha
+run('testarAcesso()'); assert.match(logs.pop(), /Aba FRETES encontrada/);
+run('mostrarSenha()'); const SENHA = props.SENHA; assert.ok(SENHA.length >= 60, 'cria a senha se nao existir');
+run('mostrarSenha()'); assert.strictEqual(props.SENHA, SENHA, 'mostrar nao troca a senha');
+run('gerarSenha()'); assert.notStrictEqual(props.SENHA, SENHA, 'gerar troca a senha'); props.SENHA = SENHA;
+run('configurarAbaFretes()');
+assert.deepStrictEqual(sheets.FRETES[0], ['ORIGEM', 'DESTINO', 'PRODUTO', 'VALOR', 'PESO', 'PALETES', 'VEÍCULO', 'CARROCERIA', 'RASTREADA', 'LONA', 'PAGAMENTO', 'OBSERVAÇÕES', 'STATUS', 'CÓDIGO', 'IDCARGA'], 'cabecalho completo');
 
 // ---- aplicativo da web (senha, leitura, reserva, nao sobrescreve)
-run('prepararTudo()'); assert.match(logs[0], /Aba FRETES encontrada/);
-props.SENHA = logs[1].split(': ')[1]; assert.match(logs[2], /ENDERECO/); assert.ok(props.SENHA.length >= 60, 'senha longa');
-const SENHA = props.SENHA;
-const get = t => JSON.parse(run('doGet')({ parameter: { token: t } }));
-const post = o => JSON.parse(run('doPost')({ postData: { contents: JSON.stringify(o) } }));
-sheets.FRETES.splice(1, 0, ['EXTREMA/MG', 'FRUTAL/MG', 'X', 'Carreta', 'PUBLICAR', '']);
+sheets.FRETES.push(['EXTREMA/MG', 'FRUTAL/MG', 'X', '', '', '', 'Carreta', '', '', '', '', '', 'PUBLICAR', '', ''], ['JACAREI/SP', 'ATIBAIA/SP', 'Y', '', '', '', 'Carreta', '', '', '', '', '', 'Publicado', 'AB-1', '']);
 assert.strictEqual(get('errada').ok, false);
 assert.deepStrictEqual(get(SENHA).linhas.map(l => [l.linha, l.origem, l.status, l.codigo]), [[2, 'EXTREMA/MG', 'PUBLICAR', ''], [3, 'JACAREI/SP', 'Publicado', 'AB-1']]);
 const conf = { origem: 'extrema/mg', destino: 'FRUTAL/MG' };
 assert.deepStrictEqual(post({ token: SENHA, atualizacoes: [{ linha: 2, status: 'PUBLICANDO...', esperado: ['publicar'], confere: conf }] }).gravadas, [2]);
 assert.strictEqual(post({ token: SENHA, atualizacoes: [{ linha: 2, status: 'PUBLICANDO...', esperado: ['publicar'], confere: conf }] }).ignoradas.length, 1, 'segunda reserva recusada');
 assert.strictEqual(post({ token: SENHA, atualizacoes: [{ linha: 3, status: 'x', confere: conf }] }).ignoradas[0].motivo, 'a linha nao e mais a mesma');
+assert.strictEqual(post({ token: 'errada', atualizacoes: [] }).ok, false);
 assert.deepStrictEqual(post({ token: SENHA, atualizacoes: [{ linha: 2, status: 'Publicado', codigo: 'MGMG-27DE', esperado: ['publicando...'], confere: conf }] }).gravadas, [2]);
-assert.deepStrictEqual([sheets.FRETES[1][4], sheets.FRETES[1][5]], ['Publicado', 'MGMG-27DE']);
-sheets.FRETES.splice(1, 1); // volta ao estado inicial
+assert.deepStrictEqual([sheets.FRETES[1][12], sheets.FRETES[1][13]], ['Publicado', 'MGMG-27DE']);
 
 // ---- importador Base -> FRETES (mesma regra do Autoresponder)
-// 1) aba FRETES sem a coluna IDCARGA: o importador cria
-sheets.FRETES = [['ORIGEM', 'DESTINO', 'PRODUTO', 'STATUS', 'CÓDIGO']];
-run('importarDaBase()');
-assert.strictEqual(sheets.FRETES[0][5], 'IDCARGA', 'cria a coluna IDCARGA');
-assert.deepStrictEqual(sheets.FRETES.slice(1).map(r => r[5]).sort(), ['a1', 'a11', 'a8'], 'so as cargas ativas');
-
-// 2) cenario completo
-const CAB = ['ORIGEM', 'DESTINO', 'PRODUTO', 'VALOR', 'PESO', 'PALETES', 'VEÍCULO', 'CARROCERIA', 'RASTREADA', 'LONA', 'PAGAMENTO', 'OBSERVAÇÕES', 'STATUS', 'CÓDIGO', 'IDCARGA'];
+const CAB = sheets.FRETES[0];
 const lin = (st, cod, id) => ['SERRA/ES', 'VIANA/ES', 'PAPEL', 'A combinar', '20 Ton', '', 'Carreta', 'Sider', 'Sim', 'Não', 'Outro', '', st, cod, id];
 sheets.FRETES = [CAB, lin('Publicado', 'ZZ-9', 'a9'), lin('PUBLICAR', '', 'a10'), lin('Publicado', 'ZZ-11', 'a11')];
 const col = (r, k) => r[CAB.indexOf(k)];
 const achar = id => sheets.FRETES.find((r, i) => i > 0 && col(r, 'IDCARGA') === id);
-let r = run('importarDaBase()');
-assert.deepStrictEqual(r, { novas: 2, fechar: 1, cancelar: 1 });
+assert.deepStrictEqual(run('importarDaBase()'), { novas: 2, fechar: 1, cancelar: 1 });
 const a1 = achar('a1');
 assert.deepStrictEqual(CAB.map(k => col(a1, k)), ['EXTREMA/MG', 'FRUTAL/MG', 'EMBALAGEM', 'A combinar', '25 Ton', '28 PAL', 'Carreta LS + Vanderléia + Carreta', 'Baú + Sider', 'Sim', 'Não', 'Outro', 'NECESSARIO 6 CINTAS', 'REVISAR', '', 'a1']);
-const a8 = achar('a8');
-assert.deepStrictEqual(['PESO', 'PALETES', 'VEÍCULO', 'CARROCERIA', 'RASTREADA'].map(k => col(a8, k)), ['14 Ton', '', 'Truck', 'Bug Porta Container', 'Não']);
+assert.deepStrictEqual(['PESO', 'PALETES', 'VEÍCULO', 'CARROCERIA', 'RASTREADA'].map(k => col(achar('a8'), k)), ['14 Ton', '', 'Truck', 'Bug Porta Container', 'Não']);
 assert.strictEqual(col(achar('a9'), 'STATUS'), 'FECHAR', 'publicada e a carga fechou (EM PROCESSO): fechar');
 assert.strictEqual(col(achar('a10'), 'STATUS'), 'Encerrada antes de publicar', 'nao publica carga que fechou antes');
 assert.strictEqual(col(achar('a11'), 'STATUS'), 'Publicado', 'Mot CANCELADO nao fecha (so FECHADO), carga continua ativa');
 assert.ok(!sheets.FRETES.flat().some(v => /SECRETO|CPF|000\.000/.test(String(v))), 'nao copia cliente nem dados do motorista');
-// 3) idempotente: rodar de novo nao duplica nem muda nada
 const antes = JSON.stringify(sheets.FRETES);
-assert.deepStrictEqual(run('importarDaBase()'), { novas: 0, fechar: 0, cancelar: 0 });
+assert.deepStrictEqual(run('importarDaBase()'), { novas: 0, fechar: 0, cancelar: 0 }, 'idempotente');
 assert.strictEqual(JSON.stringify(sheets.FRETES), antes);
-// 4) publicacao automatica ligada: carga nova entra como PUBLICAR
 run('ligarPublicacaoAutomatica()');
 sheets.Base.push(['a12', 'ATIVA', 'TERCEIRO', new Date(agora + dia), 'PAPEL', 'SIM', 'CAVALO TOCO', 'SIDER', '', 'SERRA', 'ES', 'VIANA', 'ES', 20000, '', 'CARGA EM ABERTO', '']);
 assert.strictEqual(run('importarDaBase()').novas, 1);
 assert.strictEqual(col(achar('a12'), 'STATUS'), 'PUBLICAR');
-// 5) Base vazia nao fecha nada (protecao)
+// prepararTudo deixa a publicacao automatica DESLIGADA e nao troca a senha
+sheets.Base.push(['a13', 'ATIVA', 'TERCEIRO', new Date(agora + dia), 'PAPEL', 'SIM', 'CAVALO TOCO', 'SIDER', '', 'SERRA', 'ES', 'VIANA', 'ES', 20000, '', 'CARGA EM ABERTO', '']);
+run('prepararTudo()');
+assert.strictEqual(props.FR_AUTO, 'nao'); assert.strictEqual(props.SENHA, SENHA);
+assert.strictEqual(col(achar('a13'), 'STATUS'), 'REVISAR');
+assert.ok(logs.some(l => /ENDERECO: copie em Implantar/.test(l)));
+// Base vazia nao fecha nada
 sheets.Base = [sheets.Base[0]];
 assert.throws(() => run('importarDaBase()'), /Base vazia/);
 assert.strictEqual(col(achar('a11'), 'STATUS'), 'Publicado');
-// 6) trigger: liga e desliga sem duplicar
+// gatilho: liga e desliga sem duplicar
 run('ativarImportacaoAutomatica()'); run('ativarImportacaoAutomatica()');
 assert.strictEqual(triggers.length, 1);
 run('desativarImportacaoAutomatica()');
 assert.strictEqual(triggers.length, 0);
-console.log('OK: aplicativo da web da planilha e importador Base -> FRETES (regra do Autoresponder, fechar, sem duplicar)');
+console.log('OK: projeto unico (aplicativo da web + importador Base -> FRETES, sem planilha ativa e sem janelas)');
