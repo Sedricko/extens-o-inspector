@@ -55,6 +55,7 @@ const FORM = `<!doctype html><meta charset="utf-8"><title>Criar frete</title><bo
 <div class="v" id="vc">Carreta<br>Sugerido 5 eixos – até 26.5 ton</div>
 <div class="v" id="vt">Truck<br>Sugerido 3 eixos – até 15 ton</div>
 <div class="v" id="vls">Carreta LS<br>Sugerido 6 eixos – até 33 ton</div>
+<div id="carr">Carregando veículo...</div>
 <div class="b" id="bau" aria-pressed="false">Baú</div><div class="b" id="sider" aria-pressed="false">Sider</div>
 <div><label>Observações adicionais</label><textarea id="obs"></textarea></div>
 <div id="resto"></div>
@@ -78,6 +79,10 @@ const FORM = `<!doctype html><meta charset="utf-8"><title>Criar frete</title><bo
     const d = document.createElement('div'); d.className = 'b'; d.setAttribute('aria-pressed', 'false'); d.textContent = t;
     d.onclick = () => d.setAttribute('aria-pressed', d.getAttribute('aria-pressed') === 'false'); resto.append(d);
   }
+  // a lista de veiculos recarrega 2,5 s depois do peso e apaga o que ja estava marcado (como a Fretebras faz)
+  setTimeout(() => { carr.remove(); for (const b of document.querySelectorAll('.v')) b.dataset.on = ''; }, 2500);
+  const voce = document.createElement('div'); voce.className = 'b'; voce.id = 'voce'; voce.setAttribute('aria-pressed', 'false'); voce.textContent = 'Você operacional2.go@trpoloni.com.br · (28) 98113-0644';
+  voce.onclick = () => voce.setAttribute('aria-pressed', voce.getAttribute('aria-pressed') === 'false'); resto.append(voce);
   pub.onclick = () => { log.push('PUBLICOU'); setTimeout(() => { document.body.innerHTML = '<h1>Frete publicado com alta exposição</h1><p>Frete SPGO-1770 · Goiânia - GO → São Paulo - SP</p>'; }, 500); };
 </script></body>`;
 
@@ -332,7 +337,7 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
     assert.strictEqual(await form.getAttribute('#bau', 'aria-pressed'), 'false', 'so a carroceria pedida');
     assert.ok(fill.summary.some(x => x.campo === 'Local da coleta' && x.valor === 'Extrema - MG'), JSON.stringify(fill.summary));
     assert.ok(fill.summary.some(x => x.campo === 'Conforme peso da carga' && x.valor === true), JSON.stringify(fill.summary));
-    assert.deepStrictEqual(await form.$$eval('#resto .b', els => els.map(e => e.getAttribute('aria-pressed'))), ['true', 'false', 'false', 'false', 'false', 'false', 'true', 'true']);
+    assert.deepStrictEqual(await form.$$eval('#resto .b', els => els.map(e => e.getAttribute('aria-pressed'))), ['true', 'false', 'false', 'false', 'false', 'false', 'true', 'true', 'true']); // o ultimo e o "Voce"
     const ativa = await sw.evaluate(async () => (await chrome.tabs.query({ active: true })).map(t => t.url));
     assert.ok(!ativa.some(u => (u || '').endsWith('/meus-fretes/cadastrar')), 'nao tira voce da sua aba: ' + ativa);
     await form.close();

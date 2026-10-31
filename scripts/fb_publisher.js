@@ -79,10 +79,19 @@
       click(opt);
       await sleep(500);
     },
-    async toggle(s) { // liga so se ainda nao estiver ligado (clicar de novo desligaria)
-      const el = await waitFor(() => find(s.text), `"${show(s.text)}"`);
+    async toggle(s) { // liga so se ainda nao estiver ligado; confere depois (a lista pode recarregar e perder a escolha)
+      const achar = () => find(s.text);
+      let el = await waitFor(achar, `"${show(s.text)}"`, s.opcional ? 3000 : 10000).catch(e => { if (s.opcional) return null; throw e; });
+      if (!el) return;
       if (isOn(el) !== true) click(el);
-      await sleep(300);
+      await sleep(600);
+      el = achar() || el; // a tela pode ter desenhado o botao de novo
+      if (isOn(el) === false) { click(el); await sleep(600); } // nao pegou: uma segunda tentativa
+    },
+    async espera(s) { // espera sumir um aviso de carregamento (ex.: "Carregando veiculo...")
+      await sleep(400);
+      await waitFor(() => !find(s.some), '', 20000).catch(() => {});
+      await sleep(500);
     },
     async switch(s) { // interruptor ao lado de um rotulo (s.on: false = garante desligado)
       const l = await waitFor(() => find(s.label), `"${s.label}"`);

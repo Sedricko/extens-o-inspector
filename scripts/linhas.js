@@ -84,10 +84,12 @@ function linhaParaPassos(l) {
       { type: 'text', label: 'Peso total em toneladas', value: String(peso).replace('.', ',') },
       { type: 'switch', label: 'Precisa de rastreador?', on: rast === 'sim' },
       ...(obs ? [{ type: 'text', label: 'Observações adicionais', value: obs.slice(0, 500), tag: 'textarea' }] : []),
+      { type: 'espera', some: { start: 'Carregando' } }, // a lista de veiculos recarrega depois do peso e da rota
       ...veiculos.map(v => ({ type: 'toggle', text: { re: `^${linhaEsc(linhaNorm(v))} (sugerido )?\\d+ eixos` } })),
       ...carrocerias.map(text => ({ type: 'toggle', text })),
       { type: 'toggle', text: 'A combinar' },
       ...pagamentos.map(text => ({ type: 'toggle', text })),
+      { type: 'toggle', text: { re: '^voce .*@' }, opcional: true }, // o site exige ao menos um responsavel pela negociacao
       { type: 'toggle', text: { start: 'Plus Alta exposição' } },
     ],
   };
