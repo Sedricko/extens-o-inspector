@@ -3,8 +3,15 @@
   if (window.__MSPA_NET) return;
   const MAX = 800, BODY = 20000;
   const log = window.__MSPA_NET = [];
-  const NOISE = /google-analytics\.com|analytics\.google\.com|googletagmanager\.com|doubleclick\.net|google\.com\/(g|ccm|rmkt|measurement)\/|facebook\.com\/tr|clarity\.ms|hotjar/;
-  const push = e => { if (NOISE.test(e.url)) return; log.push(e); if (log.length > MAX) log.shift(); };
+  const NOISE = /google-analytics\.com|analytics\.google\.com|googletagmanager\.com|doubleclick\.net|google\.com\/(g|ccm|rmkt|measurement)\/|facebook\.com\/tr|clarity\.ms|hotjar|\/tracking\/tracking|\.run\.app\/events/;
+  // Gravacao ligada (sobrevive a F5 pelo sessionStorage): cada chamada vai na hora para o armazenamento da extensao.
+  try { window.__MSPA_REC_ON = sessionStorage.getItem('mspa-rec') || null; } catch {}
+  const push = e => {
+    if (NOISE.test(e.url)) return;
+    log.push(e);
+    if (log.length > MAX) log.shift();
+    if (window.__MSPA_REC_ON) window.postMessage({ mspa: 'rec-step', step: { ...e, type: 'request', via: e.type, recId: window.__MSPA_REC_ON } }, '*');
+  };
   const cut = t => (t.length > BODY ? t.slice(0, BODY) + '…' : t);
   // shortcut: mascara so senha/token/codigo de login em JSON e form-urlencoded; corpo em outro formato sai como esta.
   const mask = t => cut(t).replace(/(^|[?&"{,\s])((?:password|passwd|senha|secret|authorization|code|code_verifier|\w*token\w*)"?\s*[:=]\s*)("[^"]*"|[^&,}\s]*)/gi, '$1$2"***"');
@@ -26,8 +33,9 @@
       e.status = res.status;
       e.ms = Date.now() - e.t;
       e.contentType = res.headers.get('content-type');
-      if (textual(e.contentType)) res.clone().text().then(b => { e.resBody = mask(b); }, () => {});
-      push(e);
+      // anota depois de ler a resposta, para a gravacao levar o corpo junto
+      if (textual(e.contentType)) res.clone().text().then(b => { e.resBody = mask(b); }, () => {}).then(() => push(e));
+      else push(e);
       return res;
     } catch (err) {
       e.error = String(err);

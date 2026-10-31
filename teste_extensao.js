@@ -31,9 +31,13 @@ const SPA = `<!doctype html><title>Criar frete</title><body><main>
     const body = { origem: orig.value, peso: +peso.value, veiculo: veic.value };
     const r = await (await fetch('/api/frete', { method: 'POST', body: JSON.stringify(body) })).json();
     localStorage.setItem('ultimoFrete', r.id);
-    const t = document.createElement('div'); t.textContent = 'Frete criado: ' + r.id; document.body.append(t);
-    history.pushState(null, '', '/app/fretes/' + r.id);
+    history.pushState(null, '', '/app/criado');
+    location.href = '/app/fretes/' + r.id; // recarrega a pagina inteira, como a Fretebras faz
   };
+  if (location.pathname.startsWith('/app/fretes/')) {
+    document.querySelector('main').remove();
+    setTimeout(() => { const t = document.createElement('div'); t.textContent = 'Frete publicado: ' + location.pathname.split('/').pop(); document.body.append(t); }, 300);
+  }
 </script></body>`;
 
 (async () => {
@@ -99,26 +103,33 @@ const SPA = `<!doctype html><title>Criar frete</title><body><main>
     const masked = await page.evaluate(async () => {
       await fetch('/api/t', { method: 'POST', body: 'grant_type=x&code=SEGREDO1&code_verifier=SEGREDO2' });
       await fetch('/api/t', { method: 'POST', body: JSON.stringify({ tokenFCM: 'SEGREDO3', freightCode: 'SPMG-1', zipcode: '123' }) });
-      return window.__MSPA_NET.slice(-2).map(n => n.reqBody).join(' ');
+      await new Promise(r => setTimeout(r, 200)); // a chamada entra no log depois de ler a resposta
+      return window.__MSPA_NET.filter(n => n.url.endsWith('/api/t')).map(n => n.reqBody).join(' ');
     });
     assert.ok(!/SEGREDO/.test(masked) && masked.includes('SPMG-1') && masked.includes('"123"'), masked);
 
-    // Fase 3: gravador do que o usuario faz
+    // Fase 3: gravador do que o usuario faz, sobrevivendo a recarga da pagina
     const app = await ctx.newPage();
+    await app.addInitScript(() => { const a = Element.prototype.attachShadow; Element.prototype.attachShadow = function () { return a.call(this, { mode: 'open' }); }; }); // so no teste
     await app.goto(base + 'app');
-    await app.waitForFunction(() => window.__MSPA);
-    await app.evaluate(() => { const a = Element.prototype.attachShadow; Element.prototype.attachShadow = function () { return a.call(this, { mode: 'open' }); }; });
-    await app.addScriptTag({ path: path.join(__dirname, 'scripts/inject_recorder.js') });
+    await app.waitForFunction(() => window.__MSPA_RECORDER);
+    await app.bringToFront();
+    assert.deepStrictEqual(await send('rec'), { on: true });
     await app.locator('#orig').pressSequentially('Jacarei');
     await app.fill('#peso', '25');
     await app.selectOption('#veic', '2');
     await app.check('#rast');
     await app.fill('#pw', 'minhasenha');
     await app.click('#criar');
-    await app.waitForSelector('text=Frete criado: SPMG-4BC4');
+    await app.waitForURL('**/app/fretes/SPMG-4BC4');
+    await app.waitForSelector('text=Frete publicado: SPMG-4BC4');
     await app.waitForTimeout(800);
     await app.locator('#mspa-rec').getByText('Parar e salvar').click();
-    const rec = await app.evaluate(() => window.__MSPA_REC);
+    await app.waitForTimeout(1500);
+    // Playwright renomeia os downloads: le o ultimo arquivo salvo
+    const files = await sw.evaluate(async () => (await chrome.downloads.search({ state: 'complete', orderBy: ['-startTime'] })).map(d => d.filename));
+    assert.strictEqual(files.length, 2, 'export manual + salvamento ao parar a gravacao');
+    const rec = JSON.parse(fs.readFileSync(files[0], 'utf8')).recording;
     const tl = rec.timeline;
     const fields = tl.filter(s => s.type === 'field');
     assert.deepStrictEqual(fields.filter(f => f.name === 'Origem').map(f => f.value), ['Jacarei'], 'digitacao vira um passo so');
@@ -132,13 +143,13 @@ const SPA = `<!doctype html><title>Criar frete</title><body><main>
     const req = tl.find(s => s.type === 'request' && s.url.endsWith('/api/frete'));
     assert.ok(req.reqBody.includes('"origem":"Jacarei"') && req.resBody.includes('SPMG-4BC4'), JSON.stringify(req));
     assert.ok(tl.indexOf(click) < tl.indexOf(req), 'linha do tempo em ordem');
-    assert.ok(tl.some(s => s.type === 'appeared' && s.texts.includes('Frete criado: SPMG-4BC4')));
-    assert.ok(tl.some(s => s.type === 'screen' && s.route === '/app/fretes/SPMG-4BC4'));
     assert.ok(tl.some(s => s.type === 'storage' && s.key === 'ultimoFrete' && s.value === 'SPMG-4BC4'));
-    assert.strictEqual(await app.evaluate(() => window.__MSPA_RECORDER), undefined, 'gravador desligou');
-    await app.waitForTimeout(500);
-    // Playwright renomeia os downloads; conta os concluidos (export manual + salvamento ao parar a gravacao)
-    assert.strictEqual(await sw.evaluate(async () => (await chrome.downloads.search({ state: 'complete' })).length), 2);
+    assert.ok(tl.some(s => s.type === 'screen' && s.route === '/app/criado'));
+    // depois da recarga
+    assert.ok(tl.some(s => s.type === 'screen' && s.route === '/app/fretes/SPMG-4BC4' && s.reloaded), 'continuou depois do F5');
+    assert.ok(tl.some(s => s.type === 'appeared' && s.texts.includes('Frete publicado: SPMG-4BC4')));
+    assert.deepStrictEqual(await sw.evaluate(async () => Object.keys(await chrome.storage.local.get(null))), [], 'passos apagados depois de salvar');
+    assert.strictEqual(await app.evaluate(() => sessionStorage.getItem('mspa-rec')), null, 'gravador desligou');
 
     // Export grande (data: URL do background) continua salvando
     await app.evaluate(() => { for (let i = 0; i < 400; i++) window.__MSPA_NET.push({ url: 'x', resBody: 'x'.repeat(20000) }); });

@@ -25,4 +25,7 @@ const inject = file => async () => {
   } catch (e) { show(String(e.message || e)); }
 };
 document.getElementById('panel').onclick = inject('scripts/inject_panel.js');
-document.getElementById('rec').onclick = inject('scripts/inject_recorder.js');
+document.getElementById('rec').onclick = async () => {
+  const r = await send('rec');
+  show(r.error || (r.on ? 'Gravando. Use o site e clique em "Parar e salvar" na barra vermelha.' : 'Gravacao salva em Downloads/master-spa.'));
+};

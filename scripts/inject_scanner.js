@@ -144,7 +144,7 @@
       when: new Date().toISOString(),
       dom: api.lastScan || scan(),
       network: window.__MSPA_NET || [],
-      recording: window.__MSPA_REC || null,
+      recId: window.__MSPA_REC_ON || null,
     }),
   };
 

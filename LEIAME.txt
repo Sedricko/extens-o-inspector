@@ -15,7 +15,9 @@ Popup:
     request  = chamada que o site fez (o que enviou e o que voltou)
     appeared = texto que apareceu ou mudou na tela (mensagem de sucesso, erro, modal)
     storage  = o que o site guardou por dentro (localStorage/sessionStorage)
-  Senha e campos de cartao saem como ***. Se a pagina recarregar inteira (F5), a gravacao se perde.
+  Senha e campos de cartao saem como ***. Cada passo e salvo na hora no armazenamento da extensao: se a pagina
+  recarregar (F5 ou o site recarregar sozinho), a gravacao continua e marca "reloaded": true. Vale so para a mesma aba.
+  Ao parar, os passos sao apagados da extensao (ficam so no JSON baixado).
 
 Rede: guarda as ultimas 800 chamadas (corpo ate 20000 caracteres), sem Google Analytics e afins. Mascara senha,
 tokens e codigo do login (code, code_verifier) em JSON e form; nao guarda cabecalhos nem cookies. O JSON fica so no seu PC, mas confira antes de mandar para alguem.

@@ -2,12 +2,15 @@
 const pending = new Map();
 let seq = 0;
 
-const save = () => ask('export').then(data => data.error ? data : chrome.runtime.sendMessage({ cmd: 'save', data }));
+const save = (recId, final) => ask('export').then(data => data.error ? data : chrome.runtime.sendMessage({ cmd: 'save', data, recId, final }));
 
 window.addEventListener('message', ev => {
   const d = ev.data;
-  if (ev.source === window && d && d.mspa === 'save') return void save(); // fim da gravacao
-  if (ev.source !== window || !d || d.mspa !== 'res' || !pending.has(d.id)) return;
+  if (ev.source !== window || !d) return;
+  // Gravacao: cada passo vai direto para o armazenamento da extensao (nao se perde se a pagina recarregar)
+  if (d.mspa === 'rec-step' && d.step && d.step.recId) return void chrome.storage.local.set({ [`rec:${d.step.recId}:${d.step.t}:${Math.random()}`]: d.step });
+  if (d.mspa === 'rec-stop' && d.recId) return void save(d.recId, true);
+  if (d.mspa !== 'res' || !pending.has(d.id)) return;
   pending.get(d.id)(d.res);
   pending.delete(d.id);
 });
