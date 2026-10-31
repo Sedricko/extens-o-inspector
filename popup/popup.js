@@ -18,9 +18,11 @@ document.getElementById('export').onclick = async () => {
   const r = await send('export');
   show(r.error || `Salvo em Downloads/${r.filename}`);
 };
-document.getElementById('panel').onclick = async () => {
+const inject = file => async () => {
   try {
-    await chrome.scripting.executeScript({ target: { tabId: (await activeTab()).id }, world: 'MAIN', files: ['scripts/inject_panel.js'] });
+    await chrome.scripting.executeScript({ target: { tabId: (await activeTab()).id }, world: 'MAIN', files: [file] });
     window.close();
   } catch (e) { show(String(e.message || e)); }
 };
+document.getElementById('panel').onclick = inject('scripts/inject_panel.js');
+document.getElementById('explore').onclick = inject('scripts/inject_explorer.js');

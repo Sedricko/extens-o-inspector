@@ -2,8 +2,11 @@
 const pending = new Map();
 let seq = 0;
 
+const save = () => ask('export').then(data => data.error ? data : chrome.runtime.sendMessage({ cmd: 'save', data }));
+
 window.addEventListener('message', ev => {
   const d = ev.data;
+  if (ev.source === window && d && d.mspa === 'save') return void save(); // fim do explorador
   if (ev.source !== window || !d || d.mspa !== 'res' || !pending.has(d.id)) return;
   pending.get(d.id)(d.res);
   pending.delete(d.id);
@@ -17,9 +20,7 @@ const ask = (cmd, arg) => new Promise(ok => {
 });
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
-  const p = msg.cmd === 'export'
-    ? ask('export').then(data => data.error ? data : chrome.runtime.sendMessage({ cmd: 'save', data }))
-    : ask(msg.cmd, msg.arg);
+  const p = msg.cmd === 'export' ? save() : ask(msg.cmd, msg.arg);
   p.then(reply, e => reply({ error: String(e.message || e) }));
   return true;
 });
