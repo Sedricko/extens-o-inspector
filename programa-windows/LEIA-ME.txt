@@ -1,9 +1,13 @@
-BOT DE FRETES PARA WINDOWS 11
+BOT DE FRETES PARA WINDOWS 11 (programa proprio, sem extensao)
 
-1) Dê dois cliques em Instalar.bat (so na primeira vez). Se pedir, feche e rode de novo.
-2) Dê dois cliques em Iniciar.bat. Abre um navegador so do bot, com a extensao.
-3) Na primeira vez, entre na Central. A sessao fica salva na pasta "perfil".
-4) No painel "Sincronizar" cole o link da planilha e a senha, ligue "Sincronizar sozinha".
-5) Deixe a janela aberta (pode minimizar). Feche para parar.
+1) Dois cliques em Instalar.bat (so na primeira vez). Se pedir, feche e rode de novo.
+2) Dois cliques em Iniciar.bat.
+   - Na primeira vez ele pergunta o link da planilha (termina em /exec) e a senha. Fica salvo em config.json.
+   - Abre um navegador so do bot na Central. Se pedir login, entre (so na primeira vez; fica salvo na pasta "perfil").
+   - Assim que a Central abrir, o bot comeca sozinho e mostra na tela o que faz.
+3) Pode minimizar a janela do navegador e a janela preta. Feche a janela preta para parar.
+4) Se o login cair, o bot pausa e avisa. Entre de novo na Central e aperte ENTER na janela preta.
 
-Nao use o perfil "perfil" para outra coisa. Nao compartilhe esta pasta: ela guarda sua sessao.
+Ajustes (config.json, abra no Bloco de Notas): minutos (de quanto em quanto tempo), limite (ate 50 por rodada),
+abas (1 a 5 ao mesmo tempo), fechar ("desativar" ou "excluir"), conferirZero.
+Nao compartilhe esta pasta: ela guarda sua sessao e a senha da planilha.
