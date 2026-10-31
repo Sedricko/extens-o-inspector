@@ -111,7 +111,7 @@
   window.addEventListener('message', async ev => {
     const d = ev.data;
     if (ev.source !== window || !d || d.mspa !== 'req' || !/^fill(-ready)?$/.test(d.cmd)) return;
-    const res = d.cmd === 'fill-ready' ? { ready: true } : await fill(d.arg);
+    const res = d.cmd === 'fill-ready' ? { ready: !!find('Local da coleta') } : await fill(d.arg); // pronto = o formulario ja esta na tela
     window.postMessage({ mspa: 'res', id: d.id, res }, '*');
   });
 })();

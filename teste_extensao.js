@@ -56,6 +56,8 @@ const FORM = `<!doctype html><meta charset="utf-8"><title>Criar frete</title><bo
 <div id="resto"></div>
 <button id="pub">Publicar Frete</button>
 <script>
+  // a Central recarrega a pagina uma vez no inicio (login); isso corta o preenchimento no meio
+  if (!sessionStorage.getItem('r')) { sessionStorage.setItem('r', '1'); setTimeout(() => location.reload(), 1500); }
   window.log = [];
   const lista = (inp, ul, nome) => inp.addEventListener('input', () => setTimeout(() => {
     ul.innerHTML = '<li>' + nome + '</li><li>Outra - XX</li>';
@@ -254,7 +256,8 @@ const FORM = `<!doctype html><meta charset="utf-8"><title>Criar frete</title><bo
     await sw.evaluate(async () => { const { fb } = await chrome.storage.session.get('fb'); await chrome.storage.session.set({ fb: { ...fb, lastTest: null } }); });
 
     // Preenche o formulario numa aba em segundo plano, sem publicar
-        const fill = await sw.evaluate(b => fbFillTest(b), base);
+        formBody = FORM;
+    const fill = await sw.evaluate(b => fbFillTest(b), base);
     assert.ok(fill.ok, JSON.stringify(fill));
     const form = ctx.pages().find(p => p.url() === base + 'meus-fretes/cadastrar');
     const log = await form.evaluate(() => window.log);

@@ -154,18 +154,25 @@ const FILL_TEST = [
 async function fbFillTest(base = FB.site) { // base: so o teste automatico muda
   const tab = await chrome.tabs.create({ url: base + 'meus-fretes/cadastrar', active: false });
   const ask = (cmd, arg) => chrome.tabs.sendMessage(tab.id, { cmd, arg });
-  try {
-    for (let i = 0; ; i++) { // espera a pagina carregar e o preenchedor existir
-      if ((await ask('fill-ready').catch(() => null) || {}).ready) break;
-      if (i > 60) throw new Error('A pagina de criar frete nao carregou (a Central pediu login?).');
-      await new Promise(r => setTimeout(r, 500));
-    }
-    const r = await ask('fill', FILL_TEST);
-    await chrome.tabs.update(tab.id, { active: true }); // mostra a aba: o resultado esta la para voce conferir
+  const show = async () => { // mostra a aba: o resultado (ou onde parou) esta la para voce ver
+    await chrome.tabs.update(tab.id, { active: true });
     await chrome.windows.update(tab.windowId, { focused: true });
-    return r;
-  } catch (e) {
-    chrome.tabs.remove(tab.id).catch(() => {});
-    throw e;
+  };
+  let last;
+  // Abrir o endereco direto passa pelo login da Fretebras e a pagina recarrega: se isso cortar a conversa, tenta de novo.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    let ready = false;
+    for (let i = 0; i < 80 && !ready; i++) { // espera o formulario aparecer
+      ready = !!((await ask('fill-ready').catch(() => null)) || {}).ready;
+      if (!ready) await new Promise(r => setTimeout(r, 500));
+    }
+    if (!ready) break;
+    try {
+      const r = await ask('fill', FILL_TEST);
+      await show();
+      return r;
+    } catch (e) { last = e; }
   }
+  await show();
+  throw new Error('Nao consegui preencher: ' + (last ? last.message : 'o formulario nao apareceu (a Central pediu login?).') + ' A aba ficou aberta para voce ver.');
 }
