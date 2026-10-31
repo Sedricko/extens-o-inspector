@@ -40,3 +40,15 @@ Preencher frete de teste (aba em segundo plano) - versao 0.6
   e NAO publica. O botao "Publicar frete de teste" faz o mesmo e depois clica em Publicar Frete, le o codigo e fecha a aba (uma tentativa so, nunca repete). A aba fica aberta em segundo plano (nao tira voce da sua aba); clique nela para conferir e publicar. O resultado aparece no popup e numa faixa verde/vermelha dentro da aba. Quem envia e assina a chamada
   e o proprio site. Se um passo falhar, o popup diz qual (a aba fica aberta para voce ver).
 - Botoes que ja estiverem ligados nao sao desligados; o preenchimento usa os textos da tela.
+
+Lote pela planilha (versao 0.8)
+- Planilha: Extensoes > Apps Script > cole planilha/fretes-config.gs > recarregue. Menu "Fretes": "Configurar aba FRETES"
+  (colunas, listas de opcoes, cores) e "Gerar 10 exemplos" (produto "TESTE - EXCLUIR", exclua depois).
+  Colunas: ORIGEM, DESTINO, PRODUTO, VALOR, PESO, PALETES, VEICULO, CARROCERIA, RASTREADA, LONA, PAGAMENTO, OBSERVACOES, STATUS, CODIGO.
+- Popup > "Publicar lote (planilha)": selecione as linhas na planilha (com o cabecalho), copie e cole na pagina. A tabela mostra
+  o que sera publicado, o que sera pulado e os erros. "Preencher so a linha 1" nao publica. "Publicar todas" publica uma por vez,
+  com intervalo (minimo 5 s), numa aba em segundo plano; para na primeira falha (a menos que marque "continuar").
+- Nao duplica: pula linha com CODIGO ou STATUS "Publicado", o que a extensao ja publicou e linhas repetidas na lista.
+  Se clicou em Publicar e nao confirmou, marca INCERTA e nunca repete: confira em Meus Fretes.
+- No fim, "Copiar STATUS e CODIGO" e cole de volta na planilha (celula STATUS da primeira linha de dados).
+- Suportado por enquanto: VALOR "A combinar", LONA "Nao", tipo Carga Geral, exposicao Plus (padrao do site), peso inteiro ou decimal.

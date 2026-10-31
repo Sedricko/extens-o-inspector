@@ -84,11 +84,11 @@
       if (isOn(el) !== true) click(el);
       await sleep(300);
     },
-    async switch(s) { // interruptor ao lado de um rotulo
+    async switch(s) { // interruptor ao lado de um rotulo (s.on: false = garante desligado)
       const l = await waitFor(() => find(s.label), `"${s.label}"`);
       for (let n = l, i = 0; n && i < 5; n = n.parentElement, i++) {
         const t = n.querySelector('input[type=checkbox],input[type=radio],[role=switch],[role=checkbox]');
-        if (t) { if (isOn(t) !== true) click(t); await sleep(300); return; }
+        if (t) { if ((isOn(t) === true) !== (s.on !== false)) click(t); await sleep(300); return; }
       }
       throw new Error(`nao achei o interruptor de "${s.label}"`);
     },
@@ -154,7 +154,7 @@
       const avisos = document.body.innerText.split('\n').map(l => l.trim()).filter(l => /^(informe|selecione|preencha|erro|ja existe)/i.test(norm(l))).slice(0, 3);
       const error = 'a confirmacao "Frete publicado" nao apareceu' + (avisos.length ? ` (o site avisou: ${avisos.join(' / ')})` : '');
       banner(false, `Master SPA: ${error}. Confira em Meus Fretes se o frete saiu.`);
-      return { ok: false, error };
+      return { ok: false, error, clicou: true };
     }
     await sleep(500);
     const code = (document.body.innerText.match(/Frete\s+([A-Z]{2,4}-[A-Z0-9]{3,5})/) || [])[1] || null;

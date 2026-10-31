@@ -1,4 +1,4 @@
-importScripts('fretebras.js');
+importScripts('fretebras.js', 'scripts/linhas.js');
 
 // Junta os passos gravados (um por chave no storage) numa linha do tempo; "final" apaga depois de juntar.
 async function recording(id, final) {
@@ -43,18 +43,19 @@ function download(msg, reply) {
     reply(chrome.runtime.lastError ? { error: chrome.runtime.lastError.message } : { ok: true, id, filename }));
 }
 
-// Fretebras: a sessao so e aceita vinda da Central; publicar/excluir so do popup (sem aba), nunca de um site.
+// Fretebras: a sessao so e aceita vinda da Central; publicar so do popup ou da pagina do lote (nunca de um site).
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (sender.id !== chrome.runtime.id || !/^fb-/.test(msg.cmd)) return;
   const fromSite = sender.tab && sender.url && sender.url.startsWith(FB.site);
-  const fromPopup = !sender.tab;
+  const own = (sender.url || '').startsWith(chrome.runtime.getURL('')) || !sender.tab; // popup ou pagina da extensao
   const run = {
     'fb-session': fromSite && (() => fbSaveSession(msg)),
-    'fb-status': fromPopup && fbStatus,
-    'fb-test': fromPopup && fbPublishTest,
-    'fb-delete': fromPopup && fbDeleteTest,
-    'fb-fill': fromPopup && (() => fbFillTest()),
-    'fb-publish-form': fromPopup && (() => fbFillTest(FB.site, true)),
+    'fb-status': own && fbStatus,
+    'fb-test': own && fbPublishTest,
+    'fb-delete': own && fbDeleteTest,
+    'fb-fill': own && (() => fbFillTest()),
+    'fb-publish-form': own && (() => fbFillTest(FB.site, true)),
+    'fb-row': own && (() => fbFillTest(FB.site, !!msg.publish, msg.row)),
   }[msg.cmd];
   if (!run) return;
   run().then(r => reply(r || { ok: true }), e => reply({ error: String(e.message || e) }));

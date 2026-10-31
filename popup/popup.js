@@ -51,3 +51,4 @@ document.getElementById('fbpub').onclick = async () => {
   const r = await bg('fb-publish-form');
   show(r.error ? (r.step ? `Parou no passo ${r.step}: ${r.error}` : r.error) : r.ok ? `Publicado: ${r.code || '(codigo nao lido)'}. A aba foi fechada. Se era so teste, exclua em Meus Fretes.` : `Parou no passo ${r.step}: ${r.error}`);
 };
+document.getElementById('lote').onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL('lote/lote.html') });

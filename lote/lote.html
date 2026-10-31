@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lote de fretes</title>
+<style>
+  :root { --bg: #fff; --fg: #111; --mut: #666; --bd: #ddd; --ok: #15803d; --err: #b91c1c; --pri: #2563eb; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #16181d; --fg: #eee; --mut: #9aa; --bd: #333; } }
+  body { font: 14px system-ui, sans-serif; background: var(--bg); color: var(--fg); margin: 0 auto; max-width: 1100px; padding: 16px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p { color: var(--mut); margin: 4px 0 12px; }
+  textarea { width: 100%; box-sizing: border-box; height: 120px; font: 12px monospace; background: transparent; color: var(--fg); border: 1px solid var(--bd); border-radius: 6px; padding: 8px; }
+  .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+  button { font: inherit; padding: 6px 12px; border: 1px solid var(--bd); border-radius: 6px; background: transparent; color: var(--fg); cursor: pointer; }
+  button.pri { background: var(--pri); border-color: var(--pri); color: #fff; }
+  button:disabled { opacity: .45; cursor: default; }
+  input[type=number] { width: 60px; font: inherit; background: transparent; color: var(--fg); border: 1px solid var(--bd); border-radius: 4px; padding: 3px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border-bottom: 1px solid var(--bd); padding: 6px 8px; text-align: left; vertical-align: top; }
+  .ok { color: var(--ok); } .err { color: var(--err); }
+  .aviso { border: 1px solid var(--err); border-radius: 6px; padding: 8px 10px; color: var(--err); }
+</style>
+</head>
+<body>
+  <h1>Lote de fretes</h1>
+  <p>Na planilha, selecione as linhas (com o cabeçalho), copie e cole aqui. A extensão publica uma linha por vez, numa aba em segundo plano, e <b>pula o que já foi publicado</b> (coluna CÓDIGO ou STATUS "Publicado" na planilha, ou o que ela mesma já publicou). Ao final, copie STATUS e CÓDIGO e cole de volta na planilha.</p>
+  <p class="aviso">Publicar é de verdade, pela sua conta. Os 10 exemplos da planilha têm o produto "TESTE - EXCLUIR": exclua depois em Meus Fretes.</p>
+  <textarea id="txt" placeholder="ORIGEM  DESTINO  PRODUTO  VALOR  PESO  PALETES  VEÍCULO  CARROCERIA  RASTREADA  LONA  PAGAMENTO  OBSERVAÇÕES"></textarea>
+  <div class="bar">
+    <span id="resumo"></span>
+  </div>
+  <table>
+    <thead><tr><th>#</th><th>Origem → Destino</th><th>Produto</th><th>Peso</th><th>Veículo / Carroceria</th><th>Pagamento</th><th>Situação</th></tr></thead>
+    <tbody id="tab"></tbody>
+  </table>
+  <div class="bar">
+    <button id="testar" disabled>Preencher só a linha 1 (não publica)</button>
+    <button id="publicar" class="pri" disabled>Publicar todas</button>
+    <button id="parar" disabled>Parar depois da atual</button>
+    <label>Intervalo <input id="seg" type="number" value="10" min="5" max="120"> s</label>
+    <label><input id="cont" type="checkbox"> continuar se uma linha falhar</label>
+    <button id="copiar" disabled>Copiar STATUS e CÓDIGO</button>
+    <button id="esquecer">Esquecer o que já publiquei</button>
+  </div>
+  <p id="msg" role="status"></p>
+  <script src="../scripts/linhas.js"></script>
+  <script src="lote.js"></script>
+</body>
+</html>

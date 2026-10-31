@@ -53,6 +53,7 @@ const FORM = `<!doctype html><meta charset="utf-8"><title>Criar frete</title><bo
 <label id="peso">Conforme peso da carga<input type="radio" id="rpeso"></label><div id="pt"></div>
 <div><span>Precisa de rastreador?</span><div role="switch" aria-checked="false" id="rast"></div></div>
 <div class="v" id="vc">Carreta<br>Sugerido 5 eixos – até 26.5 ton</div>
+<div class="v" id="vt">Truck<br>Sugerido 3 eixos – até 15 ton</div>
 <div class="v" id="vls">Carreta LS<br>Sugerido 6 eixos – até 33 ton</div>
 <div class="b" id="bau" aria-pressed="false">Baú</div><div class="b" id="sider" aria-pressed="false">Sider</div>
 <div><label>Observações adicionais</label><textarea id="obs"></textarea></div>
@@ -71,7 +72,7 @@ const FORM = `<!doctype html><meta charset="utf-8"><title>Criar frete</title><bo
   esp.onclick = () => { if (esp.hasAttribute('aria-disabled')) return; lesp.innerHTML = '<li>Caixa</li><li>Pallet</li>'; lesp.lastChild.onclick = () => { lesp.innerHTML = ''; log.push('esp=Pallet'); }; };
   rpeso.onchange = () => { pt.innerHTML = '<label>Peso total em toneladas<input id="pt1"></label>'; };
   rast.onclick = () => { rast.setAttribute('aria-checked', rast.getAttribute('aria-checked') === 'false'); };
-  vc.onclick = () => log.push('Carreta'); vls.onclick = () => log.push('LS');
+  vt.onclick = () => log.push('Truck'); vc.onclick = () => log.push('Carreta'); vls.onclick = () => log.push('LS');
   for (const b of document.querySelectorAll('.b')) b.onclick = () => { b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') === 'false'); };
   for (const t of ['A combinar', 'Pix', 'TED', 'Crédito em cartão', 'Cheque', 'E-frete', 'Outro', 'Plus Alta exposição Grátis Incluso no plano']) {
     const d = document.createElement('div'); d.className = 'b'; d.setAttribute('aria-pressed', 'false'); d.textContent = t;
@@ -267,10 +268,10 @@ const FORM = `<!doctype html><meta charset="utf-8"><title>Criar frete</title><bo
     const log = await form.evaluate(() => window.log);
     assert.deepStrictEqual(log.filter(x => x !== 'LS'), ['c1=Extrema - MG', 'c2=Frutal - MG', 'tipo=Carga Geral', 'esp=Pallet', 'Carreta']);
     assert.ok(!log.includes('PUBLICOU') && !log.includes('LS'), 'nao publica e nao mexe em outro veiculo');
-    assert.strictEqual(await form.inputValue('#prod'), 'MATERIAL DE EMBALAGEM | PALLET', 'cortado em 30 caracteres');
+    assert.strictEqual(await form.inputValue('#prod'), 'MATERIAL DE EMBALAGEM - PALLET', 'o padrao ja cabe em 30 caracteres');
     assert.strictEqual(await form.inputValue('#obs'), 'PALETES: 28 PAL');
     assert.strictEqual(await form.inputValue('#qtd'), '', 'nao confunde a observacao com outro campo');
-    assert.ok(fill.notes.length === 1 && /30 caracteres/.test(fill.notes[0]), JSON.stringify(fill.notes));
+    assert.deepStrictEqual(fill.notes, []);
     assert.strictEqual(await form.inputValue('#pt1'), '25');
     assert.strictEqual(await form.getAttribute('#rast', 'aria-checked'), 'true');
     assert.strictEqual(await form.getAttribute('#sider', 'aria-pressed'), 'true');
@@ -281,6 +282,22 @@ const FORM = `<!doctype html><meta charset="utf-8"><title>Criar frete</title><bo
     const ativa = await sw.evaluate(async () => (await chrome.tabs.query({ active: true })).map(t => t.url));
     assert.ok(!ativa.some(u => (u || '').endsWith('/meus-fretes/cadastrar')), 'nao tira voce da sua aba: ' + ativa);
     await form.close();
+    // Linha da planilha diferente do padrao: Truck, Bau, sem rastreador e produto longo (cortado, "|" vira "-")
+    const linha = { origem: 'EXTREMA/MG', destino: 'FRUTAL/MG', produto: 'MATERIAL DE EMBALAGEM | PALLET VAZIO', valor: 'A combinar', peso: '14 Ton', paletes: '', veiculo: 'Truck', carroceria: 'Baú', rastreada: 'Não', lona: 'Não', pagamento: 'Outro', observacoes: '' };
+    const v = await sw.evaluate(({ b, l }) => fbFillTest(b, false, l), { b: base, l: linha });
+    assert.ok(v.ok, JSON.stringify(v));
+    const form2 = ctx.pages().find(p => p.url() === base + 'meus-fretes/cadastrar');
+    const log2 = await form2.evaluate(() => window.log);
+    assert.ok(log2.includes('Truck') && !log2.includes('Carreta'), log2.join());
+    assert.strictEqual(await form2.getAttribute('#rast', 'aria-checked'), 'false', 'rastreada Nao: nao liga');
+    assert.strictEqual(await form2.getAttribute('#bau', 'aria-pressed'), 'true');
+    assert.strictEqual(await form2.getAttribute('#sider', 'aria-pressed'), 'false');
+    assert.strictEqual(await form2.inputValue('#prod'), 'MATERIAL DE EMBALAGEM - PALLET');
+    assert.ok(v.notes.length === 1 && /30 caracteres/.test(v.notes[0]), JSON.stringify(v.notes));
+    assert.strictEqual(await form2.inputValue('#obs'), '', 'sem paletes nem observacao: nao escreve');
+    await form2.close();
+    assert.rejects(sw.evaluate(() => fbFillTest(undefined, false, { origem: 'X' })), /Linha invalida/);
+
     // Publicar: clica, le o codigo e fecha so a aba que abriu
     const abasAntes = ctx.pages().length;
     const publicou = await sw.evaluate(b => fbFillTest(b, true), base);
@@ -300,7 +317,52 @@ const FORM = `<!doctype html><meta charset="utf-8"><title>Criar frete</title><bo
     await app.waitForTimeout(300);
     assert.strictEqual((await sw.evaluate(async () => (await chrome.storage.session.get('fb')).fb)).refresh, antes);
 
-    console.log('OK: scan, React Fiber, rede (mascara), export, painel, gravador, export grande, sessao e publicacao Fretebras');
+    // Pagina do lote: pula o ja publicado e o repetido, nao duplica e devolve STATUS/CODIGO
+    const extId = sw.url().split('/')[2];
+    const cab = 'ORIGEM\tDESTINO\tPRODUTO\tVALOR\tPESO\tPALETES\tVEÍCULO\tCARROCERIA\tRASTREADA\tLONA\tPAGAMENTO\tOBSERVAÇÕES\tSTATUS\tCÓDIGO';
+    const lin = (o, d, st = '', cod = '') => [o, d, 'TESTE', 'A combinar', '25 Ton', '28 PAL', 'Carreta', 'Sider', 'Sim', 'Não', 'Outro', '', st, cod].join('\t');
+    const lista = [cab, lin('EXTREMA/MG', 'FRUTAL/MG'), lin('EXTREMA/MG', 'ITABIRITO/MG'), lin('JACAREI/SP', 'ATIBAIA/SP', 'Publicado', 'ABCD-0001'), lin('EXTREMA/MG', 'FRUTAL/MG')].join('\n');
+    const lote = await ctx.newPage();
+    lote.on('dialog', d => d.accept());
+    await lote.goto(`chrome-extension://${extId}/lote/lote.html`);
+    await lote.fill('#txt', lista);
+    await lote.waitForFunction(() => document.querySelectorAll('#tab tr').length === 4);
+    assert.match(await lote.textContent('#resumo'), /4 linhas: 2 para publicar, 2 puladas/);
+    const sit = await lote.$$eval('#tab tr', trs => trs.map(t => t.lastElementChild.textContent));
+    assert.match(sit[2], /ja publicada na planilha \(ABCD-0001\)/);
+    assert.match(sit[3], /repetida \(igual a linha 1\)/);
+    await lote.evaluate(() => { // simula o background: devolve um codigo por linha
+      let n = 0; window.enviadas = [];
+      chrome.runtime.sendMessage = async m => { window.enviadas.push(m.row.destino); return { ok: true, code: 'TEST-000' + ++n }; };
+      window.copiado = ''; navigator.clipboard.writeText = async t => { window.copiado = t; };
+    });
+    await lote.fill('#seg', '5');
+    await lote.click('#publicar');
+    await lote.waitForFunction(() => document.querySelector('#msg').textContent === 'Terminou.', null, { timeout: 30000 });
+    assert.deepStrictEqual(await lote.evaluate(() => window.enviadas), ['FRUTAL/MG', 'ITABIRITO/MG'], 'so as 2 linhas novas');
+    await lote.click('#copiar');
+    assert.strictEqual(await lote.evaluate(() => window.copiado), 'Publicado\tTEST-0001\nPublicado\tTEST-0002\nPublicado\tABCD-0001\nPublicado\tTEST-0001', 'repetida herda o codigo da igual');
+    // colar a mesma lista de novo (sem STATUS/CODIGO) nao publica nada
+    await lote.fill('#txt', [cab, lin('EXTREMA/MG', 'FRUTAL/MG'), lin('EXTREMA/MG', 'ITABIRITO/MG')].join('\n'));
+    await lote.waitForFunction(() => /0 para publicar, 2 puladas/.test(document.querySelector('#resumo').textContent));
+    assert.match((await lote.$$eval('#tab tr', t => t.map(r => r.lastElementChild.textContent)))[0], /ja publicada por esta extensao \(TEST-0001\)/);
+    assert.strictEqual(await lote.isDisabled('#publicar'), true);
+    // linha incerta (clicou e nao confirmou) nunca e repetida
+    await lote.fill('#txt', [cab, lin('EXTREMA/MG', 'SERRA/ES')].join('\n'));
+    await lote.evaluate(() => { chrome.runtime.sendMessage = async () => ({ ok: false, incerta: true, error: 'perdi a conversa' }); });
+    await lote.fill('#seg', '5');
+    await lote.click('#publicar');
+    await lote.waitForFunction(() => /INCERTA/.test(document.querySelector('#tab').textContent));
+    await lote.fill('#txt', [cab, lin('EXTREMA/MG', 'SERRA/ES')].join('\n'));
+    await lote.waitForFunction(() => /pode ja estar publicada/.test(document.querySelector('#tab').textContent));
+    assert.strictEqual(await lote.isDisabled('#publicar'), true);
+    // linha com erro bloqueia o botao
+    await lote.fill('#txt', [cab, lin('EXTREMA', 'SERRA/ES')].join('\n'));
+    await lote.waitForFunction(() => /ORIGEM deve ser CIDADE\/UF/.test(document.querySelector('#tab').textContent));
+    assert.strictEqual(await lote.isDisabled('#publicar'), true);
+    await lote.close();
+
+    console.log('OK: scan, React Fiber, rede (mascara), export, painel, gravador, export grande, sessao e publicacao Fretebras, lote sem duplicar');
   } finally {
     await ctx.close(); server.close();
   }
