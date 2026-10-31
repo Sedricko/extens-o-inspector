@@ -35,7 +35,7 @@ const aguardaLogin = async () => { await sessao.getByText(/^Ativos/).first().wai
 
 async function garanteLogin() { // entra sozinho (se tem login salvo) ou pede para voce entrar na janela
   const r = await entrar(ctx, SITE, cfgLogin(), sessao);
-  if (r === 'ja-logado' || r === 'entrou') return true;
+  if (r === 'ja-logado' || r === 'entrou') { await janela('minimized'); return true; } // login resolvido sozinho: minimiza do mesmo jeito
   estado.fase = 'login';
   estado.motivo = r === 'senha-errada' ? 'O e-mail ou a senha da Central estão incorretos. Corrija nas Configurações ou entre você mesmo na janela do navegador.' : r === 'falhou' ? 'O login automático não terminou. Se a Fretebras pediu autorização no celular, aprove; senão entre você mesmo na janela do navegador.' : 'Entre na Central na janela do navegador (só na primeira vez).';
   await janela('normal'); log(estado.motivo); avisar('Bot de Fretes: preciso de você', estado.motivo);
