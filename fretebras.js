@@ -137,22 +137,23 @@ async function fbDeleteTest() {
 // Teste: preenche o formulario "Criar frete" numa aba em segundo plano (sem publicar). A aba fica aberta, sem tomar o foco.
 // Os textos sao os que aparecem na tela e que a gravacao capturou.
 const FILL_TEST = [
-  { type: 'text', label: 'Local da coleta', value: 'Goiânia', pick: 'Goiânia - GO' },
-  { type: 'text', label: 'Local da entrega', value: 'São Paulo', pick: 'São Paulo - SP' },
+  { type: 'text', label: 'Local da coleta', value: 'Extrema', pick: 'Extrema - MG' },
+  { type: 'text', label: 'Local da entrega', value: 'Frutal', pick: 'Frutal - MG' },
   { type: 'pick', open: 'Tipo da carga', text: 'Carga Geral' }, // a Especie so habilita depois do Tipo
   { type: 'pick', open: 'Espécie da carga', text: 'Pallet' },
-  { type: 'text', label: 'Qual produto será carregado?', value: 'TESTE' },
+  { type: 'text', label: 'Qual produto será carregado?', value: 'MATERIAL DE EMBALAGEM | PALLET VAZIO', max: 30 }, // o site aceita 30
   { type: 'toggle', text: 'Conforme peso da carga' },
   { type: 'text', label: 'Peso total em toneladas', value: '25' },
   { type: 'switch', label: 'Precisa de rastreador?' },
+  { type: 'text', label: 'Observações adicionais', value: 'PALETES: 28 PAL', tag: 'textarea' },
   { type: 'toggle', text: { re: '^carreta (sugerido )?\\d+ eixos' } },
-  ...['Baú', 'Baú Frigorífico', 'Baú Refrigerado', 'Sider'].map(text => ({ type: 'toggle', text })),
+  { type: 'toggle', text: 'Sider' },
   { type: 'toggle', text: 'A combinar' },
-  ...['Pix', 'TED', 'Crédito em cartão', 'Cheque', 'E-frete', 'Outro'].map(text => ({ type: 'toggle', text })),
+  { type: 'toggle', text: 'Outro' },
   { type: 'toggle', text: { start: 'Plus Alta exposição' } },
 ];
 
-async function fbFillTest(base = FB.site) { // base: so o teste automatico muda
+async function fbFillTest(base = FB.site, publish = false) { // base: so o teste automatico muda
   const tab = await chrome.tabs.create({ url: base + 'meus-fretes/cadastrar', active: false });
   const ask = (cmd, arg) => chrome.tabs.sendMessage(tab.id, { cmd, arg });
   let last;
@@ -165,7 +166,13 @@ async function fbFillTest(base = FB.site) { // base: so o teste automatico muda
     }
     if (!ready) break;
     try {
-      return await ask('fill', FILL_TEST); // a aba fica em segundo plano: nao tira voce da sua aba
+      const r = await ask('fill', FILL_TEST); // a aba fica em segundo plano: nao tira voce da sua aba
+      if (!publish || !r.ok) return r;
+      // Publicar: uma tentativa so. Se a conversa cair depois do clique, nao ha como saber se saiu: nao repete.
+      let p;
+      try { p = await ask('publish'); } catch (e) { return { ok: false, done: r.done, error: 'perdi a conversa com a pagina depois de clicar em Publicar: confira em Meus Fretes se o frete saiu (nao tentei de novo)' }; }
+      if (p.ok) chrome.tabs.remove(tab.id).catch(() => {}); // deu certo: fecha so a aba que a extensao abriu
+      return { ...r, ...p };
     } catch (e) { last = e; }
   }
   throw new Error('Nao consegui preencher: ' + (last ? last.message : 'o formulario nao apareceu (a Central pediu login?).') + ' A aba ficou aberta em segundo plano.');

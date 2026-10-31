@@ -43,10 +43,11 @@
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   };
-  const inputOf = label => {
+  const inputOf = (label, tag) => {
+    const sel = tag === 'textarea' ? 'textarea' : 'input:not([type=hidden]),textarea';
     const l = find(label);
     for (let n = l, i = 0; n && i < 5; n = n.parentElement, i++) {
-      const f = n.querySelector('input:not([type=hidden]),textarea');
+      const f = n.querySelector(sel);
       if (f) return f;
     }
     // campo sem texto de rotulo na tela: o nome pode estar no placeholder ou no aria-label
@@ -54,11 +55,15 @@
       .find(e => visible(e) && [e.placeholder, e.getAttribute('aria-label')].some(v => norm(v) === norm(label)));
   };
 
+  let notes = [];
   const steps = {
     // Digita e, se tiver "pick", escolhe a opcao da lista que aparece (cidades vem de uma busca)
     async text(s) {
-      const el = await waitFor(() => inputOf(s.label), `o campo "${s.label}"`);
-      setValue(el, s.value);
+      const el = await waitFor(() => inputOf(s.label, s.tag), `o campo "${s.label}"`);
+      const max = s.max || (el.maxLength > 0 ? el.maxLength : 0); // o site limita o tamanho (produto: 30)
+      const value = max && s.value.length > max ? s.value.slice(0, max) : s.value;
+      if (value !== s.value) notes.push(`"${s.label}" aceita ${max} caracteres: ficou "${value}"`);
+      setValue(el, value);
       if (!s.pick) return;
       await sleep(1200); // a lista de sugestoes demora um pouco depois de digitar
       click(await waitFor(() => find(s.pick), `a opcao "${s.pick}"`));
@@ -104,13 +109,14 @@
 
   const fill = async list => {
     let n = 0;
+    notes = [];
     try {
       for (const s of list) { await steps[s.type](s); n++; }
       const botao = find('Publicar Frete');
       if (botao) botao.scrollIntoView({ block: 'center' });
-      return { ok: true, done: n, summary: summary() };
+      return { ok: true, done: n, notes, summary: summary() };
     } catch (e) {
-      return { ok: false, done: n, step: JSON.stringify(list[n]), error: String(e.message || e), summary: summary() };
+      return { ok: false, done: n, notes, step: JSON.stringify(list[n]), error: String(e.message || e), summary: summary() };
     }
   };
 
@@ -132,16 +138,34 @@
     const r = await doFill(list);
     const s = r.ok ? null : JSON.parse(r.step);
     banner(r.ok, r.ok
-      ? `Master SPA: formulario preenchido (${r.done} passos). Confira tudo e clique em Publicar Frete.`
+      ? `Master SPA: formulario preenchido (${r.done} passos). Confira tudo e clique em Publicar Frete.` + (r.notes.length ? ` Atencao: ${r.notes.join('; ')}.` : '')
       : `Master SPA: parou no passo ${r.done + 1} (${s.label || s.open || (typeof s.text === 'string' ? s.text : s.text && (s.text.start || s.text.re))}): ${r.error}. O que ja foi preenchido ficou na tela.`);
     return r;
+  };
+
+  // Clica em Publicar Frete e le o codigo que o site mostra. Uma tentativa so: nunca repete (evita frete duplicado).
+  const publish = async () => {
+    const btn = find('Publicar Frete');
+    if (!btn) return { ok: false, error: 'nao achei o botao Publicar Frete' };
+    click(btn);
+    try {
+      await waitFor(() => find({ re: '^frete publicado' }), '', 30000);
+    } catch {
+      const avisos = document.body.innerText.split('\n').map(l => l.trim()).filter(l => /^(informe|selecione|preencha|erro|ja existe)/i.test(norm(l))).slice(0, 3);
+      const error = 'a confirmacao "Frete publicado" nao apareceu' + (avisos.length ? ` (o site avisou: ${avisos.join(' / ')})` : '');
+      banner(false, `Master SPA: ${error}. Confira em Meus Fretes se o frete saiu.`);
+      return { ok: false, error };
+    }
+    await sleep(500);
+    const code = (document.body.innerText.match(/Frete\s+([A-Z]{2,4}-[A-Z0-9]{3,5})/) || [])[1] || null;
+    return { ok: true, code };
   };
 
   window.__MSPA_FILL = fillAndTell;
   window.addEventListener('message', async ev => {
     const d = ev.data;
-    if (ev.source !== window || !d || d.mspa !== 'req' || !/^fill(-ready)?$/.test(d.cmd)) return;
-    const res = d.cmd === 'fill-ready' ? { ready: !!find('Local da coleta') } : await fillAndTell(d.arg); // pronto = o formulario ja esta na tela
+    if (ev.source !== window || !d || d.mspa !== 'req' || !/^(fill(-ready)?|publish)$/.test(d.cmd)) return;
+    const res = d.cmd === 'fill-ready' ? { ready: !!find('Local da coleta') } : d.cmd === 'publish' ? await publish() : await fillAndTell(d.arg); // pronto = o formulario ja esta na tela
     window.postMessage({ mspa: 'res', id: d.id, res }, '*');
   });
 })();

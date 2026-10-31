@@ -24,7 +24,7 @@ const ask = (cmd, arg, ms = 5000) => new Promise(ok => {
 });
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
-  const p = msg.cmd === 'export' ? save() : ask(msg.cmd, msg.arg, msg.cmd === 'fill' ? 180000 : 5000); // preencher o formulario leva um bom tempo
+  const p = msg.cmd === 'export' ? save() : ask(msg.cmd, msg.arg, /^(fill|publish)$/.test(msg.cmd) ? 180000 : 5000); // preencher o formulario leva um bom tempo
   p.then(reply, e => reply({ error: String(e.message || e) }));
   return true;
 });

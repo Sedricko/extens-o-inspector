@@ -40,20 +40,14 @@ const fbRefresh = async () => {
     : 'Fretebras: sem sessao. Abra a Central da Fretebras para ativar.';
 };
 fbRefresh();
-document.getElementById('fbtest').onclick = async () => {
-  if (!confirm('Vai PUBLICAR DE VERDADE 1 frete de teste (Goiania-GO -> Sao Paulo-SP, produto TESTE). Depois exclua com o outro botao. Continuar?')) return;
-  show('Publicando...');
-  const r = await bg('fb-test');
-  show(r.error || `Publicado: ${r.code}. Confira em Meus Fretes e depois clique em Excluir frete de teste.`);
-  fbRefresh();
-};
-document.getElementById('fbdel').onclick = async () => {
-  const r = await bg('fb-delete');
-  show(r.error || `Excluido: ${r.deleted}.`);
-  fbRefresh();
-};
 document.getElementById('fbfill').onclick = async () => {
   show('Abrindo a aba em segundo plano e preenchendo... (pode levar ate 1 minuto)');
   const r = await bg('fb-fill');
-  show(r.error || (r.ok ? `Preenchido (${r.done} passos). A aba ficou aberta em segundo plano: clique nela (a ultima da barra) para conferir e publicar.` : `Parou no passo ${r.step}: ${r.error}. A aba ficou aberta em segundo plano; a mesma mensagem esta nela.`));
+  show(r.error || (r.ok ? `Preenchido (${r.done} passos).${(r.notes || []).length ? " Atencao: " + r.notes.join("; ") + "." : ""} A aba ficou aberta em segundo plano: clique nela (a ultima da barra) para conferir e publicar.` : `Parou no passo ${r.step}: ${r.error}. A aba ficou aberta em segundo plano; a mesma mensagem esta nela.`));
+};
+document.getElementById('fbpub').onclick = async () => {
+  if (!confirm('Vai PUBLICAR DE VERDADE um frete (Extrema-MG -> Frutal-MG, Pallet, Carreta Sider, 25 t, a combinar, pagamento Outro, rastreador) pela sua conta. Continuar?')) return;
+  show('Preenchendo e publicando em segundo plano... (pode levar ate 1 minuto)');
+  const r = await bg('fb-publish-form');
+  show(r.error ? (r.step ? `Parou no passo ${r.step}: ${r.error}` : r.error) : r.ok ? `Publicado: ${r.code || '(codigo nao lido)'}. A aba foi fechada. Se era so teste, exclua em Meus Fretes.` : `Parou no passo ${r.step}: ${r.error}`);
 };
