@@ -53,6 +53,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     'fb-status': fromPopup && fbStatus,
     'fb-test': fromPopup && fbPublishTest,
     'fb-delete': fromPopup && fbDeleteTest,
+    'fb-fill': fromPopup && fbFillTest,
   }[msg.cmd];
   if (!run) return;
   run().then(r => reply(r || { ok: true }), e => reply({ error: String(e.message || e) }));

@@ -52,3 +52,8 @@ document.getElementById('fbdel').onclick = async () => {
   show(r.error || `Excluido: ${r.deleted}.`);
   fbRefresh();
 };
+document.getElementById('fbfill').onclick = async () => {
+  show('Abrindo a aba em segundo plano e preenchendo... (pode levar ate 1 minuto)');
+  const r = await bg('fb-fill');
+  show(r.error || (r.ok ? `Preenchido (${r.done} passos). Confira na aba que abriu e clique em Publicar Frete.` : `Parou no passo ${r.step}: ${r.error}`));
+};

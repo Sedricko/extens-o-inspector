@@ -16,15 +16,15 @@ window.addEventListener('message', ev => {
   pending.delete(d.id);
 });
 
-const ask = (cmd, arg) => new Promise(ok => {
+const ask = (cmd, arg, ms = 5000) => new Promise(ok => {
   const id = `m${++seq}-${Math.random()}`;
   pending.set(id, ok);
   window.postMessage({ mspa: 'req', id, cmd, arg }, '*');
-  setTimeout(() => pending.delete(id) && ok({ error: 'Scanner nao respondeu. Recarregue a pagina (F5).' }), 5000);
+  setTimeout(() => pending.delete(id) && ok({ error: 'Scanner nao respondeu. Recarregue a pagina (F5).' }), ms);
 });
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
-  const p = msg.cmd === 'export' ? save() : ask(msg.cmd, msg.arg);
+  const p = msg.cmd === 'export' ? save() : ask(msg.cmd, msg.arg, msg.cmd === 'fill' ? 180000 : 5000); // preencher o formulario leva um bom tempo
   p.then(reply, e => reply({ error: String(e.message || e) }));
   return true;
 });

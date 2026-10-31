@@ -42,8 +42,42 @@ const SPA = `<!doctype html><title>Criar frete</title><body><main>
   }
 </script></body>`;
 
+// Formulario falso "Criar frete": lista de cidades que demora, campo que aparece depois, botao ja ligado, interruptor.
+const FORM = `<!doctype html><meta charset="utf-8"><title>Criar frete</title><body>
+<div><label>Local da coleta</label><input id="c1"><ul id="l1"></ul></div>
+<div><label>Local da entrega</label><input id="c2"><ul id="l2"></ul></div>
+<div id="esp">Espécie da carga</div><ul id="lesp"></ul>
+<div><label>Qual produto será carregado?</label><input id="prod"></div>
+<label id="peso">Conforme peso da carga<input type="radio" id="rpeso"></label><div id="pt"></div>
+<div><span>Precisa de rastreador?</span><div role="switch" aria-checked="false" id="rast"></div></div>
+<div class="v" id="vc">Carreta<br>Sugerido 5 eixos – até 26.5 ton</div>
+<div class="v" id="vls">Carreta LS<br>Sugerido 6 eixos – até 33 ton</div>
+<div class="b" id="bau" aria-pressed="false">Baú</div><div class="b" id="sider" aria-pressed="true">Sider</div>
+<div id="resto"></div>
+<button id="pub">Publicar Frete</button>
+<script>
+  window.log = [];
+  const lista = (inp, ul, nome) => inp.addEventListener('input', () => setTimeout(() => {
+    ul.innerHTML = '<li>' + nome + '</li><li>Outra - XX</li>';
+    ul.firstChild.onclick = () => { inp.value = nome; ul.innerHTML = ''; log.push(inp.id + '=' + nome); };
+  }, 400));
+  lista(c1, l1, 'Goiânia - GO'); lista(c2, l2, 'São Paulo - SP');
+  esp.onclick = () => { lesp.innerHTML = '<li>Caixa</li><li>Pallet</li>'; lesp.lastChild.onclick = () => { lesp.innerHTML = ''; log.push('esp=Pallet'); }; };
+  rpeso.onchange = () => { pt.innerHTML = '<label>Peso total em toneladas<input id="pt1"></label>'; };
+  rast.onclick = () => { rast.setAttribute('aria-checked', rast.getAttribute('aria-checked') === 'false'); };
+  vc.onclick = () => log.push('Carreta'); vls.onclick = () => log.push('LS');
+  for (const b of document.querySelectorAll('.b')) b.onclick = () => { b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') === 'false'); };
+  for (const t of ['Baú Frigorífico', 'Baú Refrigerado', 'A combinar', 'Pix', 'TED', 'Crédito em cartão', 'Cheque', 'E-frete', 'Outro', 'Plus Alta exposição Grátis Incluso no plano']) {
+    const d = document.createElement('div'); d.className = 'b'; d.setAttribute('aria-pressed', 'false'); d.textContent = t;
+    d.onclick = () => d.setAttribute('aria-pressed', d.getAttribute('aria-pressed') === 'false'); resto.append(d);
+  }
+  pub.onclick = () => log.push('PUBLICOU');
+</script></body>`;
+
 (async () => {
+  let formBody = FORM;
   const server = http.createServer((req, res) => {
+    if (req.url === '/meus-fretes/cadastrar') { res.setHeader('content-type', 'text/html'); return res.end(formBody); }
     if (req.url === '/api/frete') { res.setHeader('content-type', 'application/json'); return res.end('{"id":"SPMG-4BC4"}'); }
     if (req.url.startsWith('/app')) { res.setHeader('content-type', 'text/html'); return res.end(SPA); }
     if (req.url.startsWith('/api')) { res.setHeader('content-type', 'application/json'); return res.end('{"ok":true}'); }
@@ -164,7 +198,8 @@ const SPA = `<!doctype html><title>Criar frete</title><body><main>
     const F5 = `<!doctype html><body>Central depois do F5<script>
       localStorage.setItem('kc', JSON.stringify({ tokens: { access_token: '${jwt(Date.now() + 60e3)}', refresh_token: '${jwt(Date.now() + 20 * 864e5)}' } }));
     </script></body>`;
-    await ctx.route('https://novacentral.fretebras.com.br/**', r => r.request().url().endsWith('/f5') ? r.fulfill({ contentType: 'text/html', body: F5 }) : r.fulfill({ contentType: 'text/html', body: `<!doctype html><body>Central<script>
+    await ctx.route('https://novacentral.fretebras.com.br/**', r => r.request().url().endsWith('/f5') ? r.fulfill({ contentType: 'text/html', body: F5 })
+      : r.fulfill({ contentType: 'text/html', body: `<!doctype html><body>Central<script>
       fetch('https://sso-external.fretebras.com.br/realms/companies/protocol/openid-connect/token', { method: 'POST', body: 'grant_type=authorization_code&code=x' })
         .then(() => { const x = new XMLHttpRequest(); x.open('GET', 'https://nca-gateway.fretebras.com.br/web/v1/home'); x.setRequestHeader('Authorization', 'Bearer APP1'); x.setRequestHeader('x-app', 'central'); x.send(); });
     </script></body>` }));
@@ -217,6 +252,29 @@ const SPA = `<!doctype html><title>Criar frete</title><body><main>
     assert.ok(st5.active && st5.renews && st5.until > Date.now() + 19 * 864e5, JSON.stringify(st5));
     await f5.close();
     await sw.evaluate(async () => { const { fb } = await chrome.storage.session.get('fb'); await chrome.storage.session.set({ fb: { ...fb, lastTest: null } }); });
+
+    // Preenche o formulario numa aba em segundo plano, sem publicar
+        const fill = await sw.evaluate(b => fbFillTest(b), base);
+    assert.ok(fill.ok, JSON.stringify(fill));
+    const form = ctx.pages().find(p => p.url() === base + 'meus-fretes/cadastrar');
+    const log = await form.evaluate(() => window.log);
+    assert.deepStrictEqual(log.filter(x => x !== 'LS'), ['c1=Goiânia - GO', 'c2=São Paulo - SP', 'esp=Pallet', 'Carreta']);
+    assert.ok(!log.includes('PUBLICOU') && !log.includes('LS'), 'nao publica e nao mexe em outro veiculo');
+    assert.strictEqual(await form.inputValue('#prod'), 'TESTE');
+    assert.strictEqual(await form.inputValue('#pt1'), '25');
+    assert.strictEqual(await form.getAttribute('#rast', 'aria-checked'), 'true');
+    assert.strictEqual(await form.getAttribute('#bau', 'aria-pressed'), 'true');
+    assert.strictEqual(await form.getAttribute('#sider', 'aria-pressed'), 'true', 'ja ligado: nao desliga');
+    assert.ok(fill.summary.some(x => x.campo === 'Local da coleta' && x.valor === 'Goiânia - GO'), JSON.stringify(fill.summary));
+    assert.ok(fill.summary.some(x => x.campo === 'Conforme peso da carga' && x.valor === true), JSON.stringify(fill.summary));
+    assert.deepStrictEqual(await form.$$eval('#resto .b', els => els.map(e => e.getAttribute('aria-pressed'))), Array(10).fill('true'));
+    assert.strictEqual(await form.evaluate(() => document.visibilityState), 'visible', 'aba mostrada no fim');
+    await form.close();
+    // quando um passo falha, diz qual
+    formBody = '<!doctype html><meta charset="utf-8"><body><label>Local da coleta</label><input></body>';
+    const bad = await sw.evaluate(b => fbFillTest(b), base);
+    assert.ok(!bad.ok && bad.step.includes('Local da coleta') && /nao achei a opcao/.test(bad.error), JSON.stringify(bad));
+    for (const p of ctx.pages().filter(p => p.url().endsWith('/cadastrar'))) await p.close();
 
     // outro site nao consegue mandar sessao falsa nem publicar
     const antes = (await sw.evaluate(async () => (await chrome.storage.session.get('fb')).fb)).refresh;

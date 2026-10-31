@@ -33,3 +33,10 @@ Fretebras (sessao e publicacao em segundo plano)
 - "Publicar 1 frete de teste": publica DE VERDADE Goiania-GO -> Sao Paulo-SP, produto TESTE. Depois use
   "Excluir frete de teste". Serve para confirmar que a publicacao pela extensao funciona.
 - Publicar/excluir so pode ser pedido pelo popup; a sessao so e aceita vinda de novacentral.fretebras.com.br.
+
+Preencher frete de teste (aba em segundo plano) - versao 0.6
+- Botao "Preencher frete de teste": abre /meus-fretes/cadastrar numa aba em segundo plano, preenche como um usuario
+  (Goiania-GO -> Sao Paulo-SP, Pallet, produto TESTE, 25 t, rastreador, Carreta, carrocerias, A combinar, pagamentos, Plus)
+  e NAO publica. No fim mostra a aba para voce conferir e clicar em Publicar Frete. Quem envia e assina a chamada
+  e o proprio site. Se um passo falhar, o popup diz qual (a aba fica aberta para voce ver).
+- Botoes que ja estiverem ligados nao sao desligados; o preenchimento usa os textos da tela.

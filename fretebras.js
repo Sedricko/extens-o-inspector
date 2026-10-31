@@ -133,3 +133,39 @@ async function fbDeleteTest() {
   await fbSet({ lastTest: null });
   return { deleted: lastTest.code };
 }
+
+// Teste: preenche o formulario "Criar frete" numa aba em segundo plano (sem publicar) e mostra a aba no fim.
+// Os textos sao os que aparecem na tela e que a gravacao capturou.
+const FILL_TEST = [
+  { type: 'text', label: 'Local da coleta', value: 'Goiânia', pick: 'Goiânia - GO' },
+  { type: 'text', label: 'Local da entrega', value: 'São Paulo', pick: 'São Paulo - SP' },
+  { type: 'pick', open: 'Espécie da carga', text: 'Pallet' },
+  { type: 'text', label: 'Qual produto será carregado?', value: 'TESTE' },
+  { type: 'toggle', text: 'Conforme peso da carga' },
+  { type: 'text', label: 'Peso total em toneladas', value: '25' },
+  { type: 'switch', label: 'Precisa de rastreador?' },
+  { type: 'toggle', text: { re: '^carreta (sugerido )?\\d+ eixos' } },
+  ...['Baú', 'Baú Frigorífico', 'Baú Refrigerado', 'Sider'].map(text => ({ type: 'toggle', text })),
+  { type: 'toggle', text: 'A combinar' },
+  ...['Pix', 'TED', 'Crédito em cartão', 'Cheque', 'E-frete', 'Outro'].map(text => ({ type: 'toggle', text })),
+  { type: 'toggle', text: { start: 'Plus Alta exposição' } },
+];
+
+async function fbFillTest(base = FB.site) { // base: so o teste automatico muda
+  const tab = await chrome.tabs.create({ url: base + 'meus-fretes/cadastrar', active: false });
+  const ask = (cmd, arg) => chrome.tabs.sendMessage(tab.id, { cmd, arg });
+  try {
+    for (let i = 0; ; i++) { // espera a pagina carregar e o preenchedor existir
+      if ((await ask('fill-ready').catch(() => null) || {}).ready) break;
+      if (i > 60) throw new Error('A pagina de criar frete nao carregou (a Central pediu login?).');
+      await new Promise(r => setTimeout(r, 500));
+    }
+    const r = await ask('fill', FILL_TEST);
+    await chrome.tabs.update(tab.id, { active: true }); // mostra a aba: o resultado esta la para voce conferir
+    await chrome.windows.update(tab.windowId, { focused: true });
+    return r;
+  } catch (e) {
+    chrome.tabs.remove(tab.id).catch(() => {});
+    throw e;
+  }
+}
