@@ -44,7 +44,17 @@ async function filtrarMeus(page, est) {
     }
   }
   await publicado.click();
-  await page.getByText(nome, { exact: true }).first().click();
+  await sleep(300);
+  // mira na caixinha em si (pelo nome acessivel) e confere se marcou de verdade antes de confirmar; tenta ate 4 vezes
+  const caixa = page.getByRole('checkbox', { name: nome });
+  let marcada = false;
+  for (let i = 0; i < 4 && !marcada; i++) {
+    if (i > 0) await sleep(400);
+    if (await caixa.count()) await caixa.first().click({ force: true }).catch(() => {});
+    else await page.getByText(nome, { exact: true }).first().click().catch(() => {}); // fallback: clica no texto
+    marcada = await caixa.first().isChecked().catch(() => false);
+  }
+  if (!marcada) throw new Error('nao consegui marcar seu nome no filtro "Publicado por"');
   await page.getByText('Confirmar', { exact: true }).first().click();
   await novaLista(est, antes);
   if (!soMeus(est)) throw new Error('o filtro "so meus" nao ficou certo: nao fiz nada');
