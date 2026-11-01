@@ -51,14 +51,19 @@ async function filtrarMeus(page, est) {
   }
   await publicado.click();
   await sleep(300);
-  // mira na caixinha em si (pelo nome acessivel) e confere se marcou de verdade antes de confirmar; tenta ate 4 vezes
-  const caixa = page.getByRole('checkbox', { name: nome });
+  // acha a caixinha de dentro da propria pagina (pela linha cujo texto bate com seu nome) e clica nativamente;
+  // confere se marcou de verdade antes de confirmar, tenta de novo se nao marcou
   let marcada = false;
-  for (let i = 0; i < 4 && !marcada; i++) {
+  for (let i = 0; i < 5 && !marcada; i++) {
     if (i > 0) await sleep(400);
-    if (await caixa.count()) await caixa.first().click({ force: true }).catch(() => {});
-    else await page.getByText(nome, { exact: true }).first().click().catch(() => {}); // fallback: clica no texto
-    marcada = await caixa.first().isChecked().catch(() => false);
+    marcada = await page.evaluate(nome => {
+      const norm = s => String(s || '').replace(/\s+/g, ' ').trim();
+      const caixas = [...document.querySelectorAll('input[type=checkbox]')];
+      const alvo = caixas.find(c => { const linha = c.closest('label') || c.parentElement; return linha && norm(linha.innerText).includes(norm(nome)); });
+      if (!alvo) return false;
+      if (!alvo.checked) alvo.click();
+      return alvo.checked;
+    }, nome).catch(() => false);
   }
   if (!marcada) throw new Error('nao consegui marcar seu nome no filtro "Publicado por"');
   await page.getByText('Confirmar', { exact: true }).first().click();
