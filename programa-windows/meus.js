@@ -3,8 +3,8 @@
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const global = msg => Object.assign(new Error(msg), { global: true });
 
-async function abrirMeus(ctx, base) {
-  const page = await ctx.newPage();
+// Liga uma pagina (nova ou ja existente) para acompanhar as respostas de Meus Fretes. Pode ser chamado 1x so por pagina.
+function escutar(page) {
   const est = { n: 0, lista: null, eu: null, publicadores: null, apagou: null };
   page.on('response', async r => {
     try {
@@ -15,6 +15,12 @@ async function abrirMeus(ctx, base) {
       else if (m === 'DELETE' && /\/v1\/freights$/.test(u)) est.apagou = { corpo: r.request().postDataJSON(), res: (await r.json()).data };
     } catch {}
   });
+  return est;
+}
+
+async function abrirMeus(ctx, base) {
+  const page = await ctx.newPage();
+  const est = escutar(page);
   await page.goto(base + 'meus-fretes').catch(() => {});
   return { page, est };
 }
@@ -142,4 +148,4 @@ async function entrar(ctx, base, cfg, pagina) {
   return 'falhou';
 }
 
-module.exports = { abrirMeus, filtrarMeus, contarMeus, apagarMeus, entrar, codigosAtivos };
+module.exports = { abrirMeus, filtrarMeus, contarMeus, apagarMeus, entrar, codigosAtivos, escutar };

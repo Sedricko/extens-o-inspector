@@ -24,7 +24,7 @@ const configurado = () => urlOk(cfg.url) && !!cfg.token;
 // A Fretebras pede aprovacao no celular a cada login novo: o bot so tenta entrar sozinho 1 vez a cada 30 min.
 let ultimoLogin = 0;
 const cfgLogin = () => { if (cfg.usuario && Date.now() - ultimoLogin > 30 * 60e3) { ultimoLogin = Date.now(); return cfg; } return { ...cfg, usuario: '' }; };
-let ctx = null, app = null, sessao = null, paginaVisao = null, timers = [], emRodada = false, tentativas = 0, iniciando = false;
+let ctx = null, app = null, sessao = null, estSessao = null, timers = [], emRodada = false, tentativas = 0, iniciando = false;
 
 const janela = async estadoJanela => { // minimiza ou mostra o navegador do bot
   try {
@@ -57,6 +57,7 @@ async function iniciarBot() {
     await app.chrome.storage.local.set({ syncCfg: { ...cfg, auto: true } });
     await app.rodar('syncRetomar()');
     sessao = ctx.pages().find(x => !x.isClosed()) || await ctx.newPage(); // usa a aba vazia que o navegador abre, sem deixar sobra
+    estSessao = meus.escutar(sessao); // so essa aba existe: login, manter sessao e "Mostrar navegador do bot" usam todos ela, sempre filtrada
     estado.motivo = ''; await garanteLogin();
     estado.fase = 'rodando'; estado.motivo = ''; estado.erroPausa = false; log('Login ok. O bot está rodando.');
     agendar(); rodada();
@@ -98,7 +99,7 @@ async function rodada() {
 
 async function pararBot() {
   timers.forEach(clearInterval); timers = [];
-  const c = ctx; ctx = null; app = null; sessao = null; paginaVisao = null;
+  const c = ctx; ctx = null; app = null; sessao = null; estSessao = null;
   if (c) await c.close().catch(() => {});
 }
 
@@ -109,13 +110,8 @@ async function acao(a) {
   if (a === 'retoma') { tentativas = 0; estado.erroPausa = false; estado.motivo = ''; if (app) await app.rodar('syncRetomar()'); rodada(); return { ok: true }; }
   if (a === 'navegador') {
     if (!ctx) return { ok: true };
-    try { // mostra uma aba nova ja filtrada por voce (fecha a anterior, para nao empilhar abas a cada clique)
-      if (paginaVisao && !paginaVisao.isClosed()) await paginaVisao.close().catch(() => {});
-      const { page, est } = await meus.abrirMeus(ctx, SITE);
-      await meus.filtrarMeus(page, est);
-      paginaVisao = page;
-      await page.bringToFront();
-    } catch (e) { log('Nao consegui abrir Meus Fretes ja filtrado: ' + e.message); }
+    try { await meus.filtrarMeus(sessao, estSessao); } // a mesma aba, sempre filtrada por voce: nunca mostra outra pessoa
+    catch (e) { log('Nao consegui filtrar Meus Fretes: ' + e.message); }
     await janela('normal');
     return { ok: true };
   }
