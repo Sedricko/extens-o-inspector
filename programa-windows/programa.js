@@ -2,7 +2,8 @@
 const { chromium } = require('playwright');
 const path = require('path'), fs = require('fs');
 const { criar } = require('./nucleo');
-const { entrar } = require('./meus');
+const meus = require('./meus');
+const { entrar } = meus;
 const { criarPainel } = require('./painel');
 const gravar = require('./gravar');
 const { avisar } = require('./avisos');
@@ -23,7 +24,7 @@ const configurado = () => urlOk(cfg.url) && !!cfg.token;
 // A Fretebras pede aprovacao no celular a cada login novo: o bot so tenta entrar sozinho 1 vez a cada 30 min.
 let ultimoLogin = 0;
 const cfgLogin = () => { if (cfg.usuario && Date.now() - ultimoLogin > 30 * 60e3) { ultimoLogin = Date.now(); return cfg; } return { ...cfg, usuario: '' }; };
-let ctx = null, app = null, sessao = null, timers = [], emRodada = false, tentativas = 0, iniciando = false;
+let ctx = null, app = null, sessao = null, paginaVisao = null, timers = [], emRodada = false, tentativas = 0, iniciando = false;
 
 const janela = async estadoJanela => { // minimiza ou mostra o navegador do bot
   try {
@@ -97,7 +98,7 @@ async function rodada() {
 
 async function pararBot() {
   timers.forEach(clearInterval); timers = [];
-  const c = ctx; ctx = null; app = null; sessao = null;
+  const c = ctx; ctx = null; app = null; sessao = null; paginaVisao = null;
   if (c) await c.close().catch(() => {});
 }
 
@@ -106,7 +107,18 @@ async function acao(a) {
   if (a === 'agora') { rodada(); return { ok: true }; }
   if (a === 'pausa') { estado.pausadoUsuario = !estado.pausadoUsuario; log(estado.pausadoUsuario ? 'Pausado por você.' : 'Continuando.'); return { ok: true }; }
   if (a === 'retoma') { tentativas = 0; estado.erroPausa = false; estado.motivo = ''; if (app) await app.rodar('syncRetomar()'); rodada(); return { ok: true }; }
-  if (a === 'navegador') { if (ctx) await janela('normal'); return { ok: true }; }
+  if (a === 'navegador') {
+    if (!ctx) return { ok: true };
+    try { // mostra uma aba nova ja filtrada por voce (fecha a anterior, para nao empilhar abas a cada clique)
+      if (paginaVisao && !paginaVisao.isClosed()) await paginaVisao.close().catch(() => {});
+      const { page, est } = await meus.abrirMeus(ctx, SITE);
+      await meus.filtrarMeus(page, est);
+      paginaVisao = page;
+      await page.bringToFront();
+    } catch (e) { log('Nao consegui abrir Meus Fretes ja filtrado: ' + e.message); }
+    await janela('normal');
+    return { ok: true };
+  }
   if (a.startsWith('planilha-')) {
     if (!app) return { erro: 'o bot ainda nao esta rodando' };
     const nomeAcao = a.slice('planilha-'.length);
