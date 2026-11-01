@@ -153,11 +153,28 @@ function doGet(e) {
 
 // atualizacoes: [{ linha, status, codigo?, esperado?: [status atuais aceitos], confere?: { origem, destino } }]
 // So grava se o STATUS atual e um dos esperados e a origem/destino da linha conferem (a planilha pode ter sido reordenada).
+// Acoes que o painel do bot pode chamar remotamente (controlar tudo sem abrir o Apps Script).
+const FR_ACOES = {
+  importarDaBase, republicarAbertas, renovarAbertas,
+  ativarImportacaoAutomatica, desativarImportacaoAutomatica,
+  ativarImportacaoInstantanea, desativarImportacaoInstantanea,
+  ligarPublicacaoAutomatica, desligarPublicacaoAutomatica,
+  ativarRenovacaoAutomatica, desativarRenovacaoAutomatica,
+};
+
 function doPost(e) {
   const lock = LockService.getScriptLock();
   try {
     const corpo = JSON.parse(e.postData.contents);
     frSenha_(corpo.token);
+    if (corpo.acao) {
+      const fn = FR_ACOES[corpo.acao];
+      if (!fn) throw new Error('acao desconhecida: ' + corpo.acao);
+      lock.waitLock(20000);
+      const resultado = fn() || {};
+      frLog_('Bot', `${corpo.acao}: ${JSON.stringify(resultado)}`);
+      return frJson_({ ok: true, resultado });
+    }
     lock.waitLock(20000);
     const aba = frAba_();
     const cab = aba.getRange(1, 1, 1, aba.getLastColumn()).getValues()[0].map(frChaveCol_);

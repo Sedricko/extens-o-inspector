@@ -27,6 +27,22 @@ input,select{font:inherit;padding:7px;border-radius:6px;border:1px solid var(--b
 <button id="nav">Mostrar navegador do bot</button><button id="gravar">Gravar relatório</button><button id="parar" hidden class="r">Parar e salvar relatório</button></div></div>
 <div class="aviso" id="avisoCfg" hidden>Preencha as configurações abaixo e clique em Salvar para o bot começar.</div>
 <div class="card"><b>Histórico</b><table><thead><tr><th>Hora</th><th>Ação</th><th>Frete</th><th>Código</th><th>Resultado</th></tr></thead><tbody id="hist"></tbody></table></div>
+<div class="card"><b>Ações da planilha</b> <span class="mut">(controla o Apps Script sem precisar abrir o editor)</span>
+<div class="btns">
+<button data-a="importarDaBase">Importar da Base agora</button>
+<button data-a="republicarAbertas">Republicar fretes abertos</button>
+<button data-a="renovarAbertas">Renovar fretes abertos agora</button>
+</div>
+<div class="btns"><span class="mut" style="align-self:center;min-width:220px">Importação automática (10 min)</span>
+<button data-a="ativarImportacaoAutomatica">Ligar</button><button data-a="desativarImportacaoAutomatica">Desligar</button></div>
+<div class="btns"><span class="mut" style="align-self:center;min-width:220px">Importação instantânea (ao editar a Base)</span>
+<button data-a="ativarImportacaoInstantanea">Ligar</button><button data-a="desativarImportacaoInstantanea">Desligar</button></div>
+<div class="btns"><span class="mut" style="align-self:center;min-width:220px">Publicação automática (entra direto como PUBLICAR)</span>
+<button data-a="ligarPublicacaoAutomatica">Ligar</button><button data-a="desligarPublicacaoAutomatica">Desligar</button></div>
+<div class="btns"><span class="mut" style="align-self:center;min-width:220px">Renovação automática</span>
+<button data-a="ativarRenovacaoAutomatica">Ligar</button><button data-a="desativarRenovacaoAutomatica">Desligar</button></div>
+<div id="planMsg" class="mut" style="margin-top:8px"></div>
+</div>
 <div class="card"><b>Configurações</b><br><br><form id="f">
 <label>Link do app da web (termina em /exec)<input name="url" placeholder="https://script.google.com/.../exec"></label>
 <label>Senha da planilha<input name="token" type="password" placeholder="(deixe vazio para manter)"></label>
@@ -60,6 +76,12 @@ async function atualiza(){
   $('logs').textContent=s.logs.join('\\n');
 }
 for(const [id,a] of [['agora','agora'],['pausa','pausa'],['retoma','retoma'],['nav','navegador'],['gravar','gravar'],['parar','parar']])$(id).onclick=async()=>{await api('acao',{acao:a});atualiza()};
+for(const b of document.querySelectorAll('[data-a]'))b.onclick=async()=>{
+  const nome=b.dataset.a,msg=$('planMsg');b.disabled=true;msg.className='mut';msg.textContent=nome+': executando...';
+  const r=await api('acao',{acao:'planilha-'+nome});
+  msg.className=r.erro?'er':'ok';msg.textContent=r.erro?(nome+': '+r.erro):(nome+': ok');
+  b.disabled=false;atualiza();
+};
 $('f').onsubmit=async ev=>{ev.preventDefault();const o={};for(const i of $('f').elements){if(!i.name)continue;o[i.name]=i.type==='checkbox'?i.checked:i.value}
   const r=await api('cfg',o);$('msg').textContent=r.erro?r.erro:'Salvo.';$('msg').className=r.erro?'er':'ok';atualiza()};
 atualiza();setInterval(atualiza,2000);

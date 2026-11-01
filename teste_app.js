@@ -44,7 +44,7 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
 </script></body>`;
 
 (async () => {
-  const pub = [], fechou = [], eventos = []; let irDes = 0;
+  const pub = [], fechou = [], eventos = [], acoesPlanilha = []; let irDes = 0;
   const fretes = [];
   const novo = (i, quem) => fretes.push({ id: 'F' + i, freightCode: 'AA-' + String(1000 + i), freightStatus: 'enabled', publisher: quem === 'eu' ? { id: EU.id_hashed, fullName: NOME } : { id: 'oXd0Z', fullName: 'DIEGO RAFAEL' } });
   const reset = (meus, outros) => { fretes.length = 0; for (let i = 0; i < meus; i++) novo(i, 'eu'); for (let i = 0; i < outros; i++) novo(100 + i, 'outro'); eventos.length = 0; pub.length = 0; fechou.length = 0; };
@@ -54,8 +54,10 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
     let corpo = ''; req.on('data', d => { corpo += d; });
     req.on('end', () => {
       if (req.method === 'GET') return res.writeHead(200, h).end(JSON.stringify({ ok: true, linhas: linhas.map((l, i) => ({ linha: i + 2, ...l })) }));
+      const corpoJson = JSON.parse(corpo);
+      if (corpoJson.acao) { acoesPlanilha.push(corpoJson.acao); return res.writeHead(200, h).end(JSON.stringify({ ok: true, resultado: { fiz: corpoJson.acao } })); }
       const gravadas = [];
-      for (const u of JSON.parse(corpo).atualizacoes) {
+      for (const u of corpoJson.atualizacoes) {
         const l = linhas[u.linha - 2];
         if (u.esperado && !u.esperado.map(s => s.toLowerCase()).includes(String(l.status).toLowerCase())) continue;
         l.status = u.status; if (u.codigo !== undefined) l.codigo = u.codigo; gravadas.push(u.linha);
@@ -146,6 +148,11 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
     assert.ok(saida.some(l => /Aviso do site .*novo recurso/.test(l)), 'fechou o popup e registrou: ' + saida.slice(0, 5).join(' | '));
     assert.ok(saida.some(l => /Aviso do site .*promocao|Aviso do site .*promoção/i.test(l)) && saida.some(l => /automaticamente/.test(l)), 'fechou os dois avisos: ' + saida.slice(0, 6).join(' | '));
     assert.strictEqual(irDes, 0, 'nunca clica em "Ir para Desativados"');
+
+    // 6) o painel controla a planilha de longe (botoes "Ligar/Desligar/Importar agora")
+    const r = await app.rodar(`planilhaAcao('republicarAbertas')`);
+    assert.deepStrictEqual(r, { fiz: 'republicarAbertas' });
+    assert.deepStrictEqual(acoesPlanilha, ['republicarAbertas']);
     console.log('OK teste_app');
   } finally { await ctx.close(); site.close(); planilha.close(); }
 })().catch(e => { console.error(e); process.exit(1); });

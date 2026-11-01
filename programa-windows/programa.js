@@ -49,7 +49,8 @@ async function iniciarBot() {
   if (!configurado()) { estado.fase = 'configurar'; estado.motivo = ''; return; }
   iniciando = true; estado.fase = 'iniciando'; estado.motivo = 'Abrindo o navegador do bot...';
   try {
-    ctx = await chromium.launchPersistentContext(path.join(pasta, 'perfil'), { headless: false, channel: 'chromium', viewport: null, args: ['--start-maximized'] });
+    // nasce minimizado: so aparece se voce clicar em "Mostrar navegador do bot" ou se ele precisar de voce (login, erro)
+    ctx = await chromium.launchPersistentContext(path.join(pasta, 'perfil'), { headless: false, channel: 'chromium', viewport: null, args: ['--start-minimized'] });
     ctx.on('close', () => { if (ctx && estado.fase !== 'parado' && estado.fase !== 'gravando') { log('O navegador do bot foi fechado.'); ctx = null; app = null; estado.fase = 'parado'; estado.motivo = 'O navegador do bot foi fechado. Salve as configurações ou reabra o programa.'; avisar('Bot de Fretes: parou', estado.motivo); } });
     app = criar({ ctx, arquivoDados: path.join(pasta, 'dados.json'), escrever: log });
     await app.chrome.storage.local.set({ syncCfg: { ...cfg, auto: true } });
@@ -106,6 +107,15 @@ async function acao(a) {
   if (a === 'pausa') { estado.pausadoUsuario = !estado.pausadoUsuario; log(estado.pausadoUsuario ? 'Pausado por você.' : 'Continuando.'); return { ok: true }; }
   if (a === 'retoma') { tentativas = 0; estado.erroPausa = false; estado.motivo = ''; if (app) await app.rodar('syncRetomar()'); rodada(); return { ok: true }; }
   if (a === 'navegador') { if (ctx) await janela('normal'); return { ok: true }; }
+  if (a.startsWith('planilha-')) {
+    if (!app) return { erro: 'o bot ainda nao esta rodando' };
+    const nomeAcao = a.slice('planilha-'.length);
+    try {
+      const r = await app.rodar(`planilhaAcao(${JSON.stringify(nomeAcao)})`);
+      log(`Planilha (${nomeAcao}): ${JSON.stringify(r)}`);
+      return { ok: true, resultado: r };
+    } catch (e) { log(`Planilha (${nomeAcao}): erro - ${e.message}`, 'erro'); return { erro: e.message }; }
+  }
   if (a === 'gravar') {
     estado.fase = 'gravando'; estado.motivo = 'Faça no navegador o que quiser gravar. Depois clique em "Parar e salvar relatório".';
     await pararBot();

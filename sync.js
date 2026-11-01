@@ -43,6 +43,14 @@ async function planilhaPost(cfg, atualizacoes) {
   if (!j.ok) throw new Error('Planilha: ' + (j.erro || 'resposta invalida'));
   return j;
 }
+// Chama uma funcao do Apps Script de longe (o painel do bot controla a planilha sem abrir o editor).
+async function planilhaAcao(acao) {
+  const cfg = await syncCfg();
+  if (!cfg.url || !cfg.token) throw new Error('Falta o endereco e a senha da planilha (pagina Sincronizar).');
+  const j = await planilhaChamar(cfg.url, { method: 'POST', headers: { 'content-type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ token: cfg.token, acao }) });
+  if (!j.ok) throw new Error('Planilha: ' + (j.erro || 'resposta invalida'));
+  return j.resultado;
+}
 
 // Resultado que nao chegou na planilha fica guardado e e reenviado antes da proxima rodada.
 async function syncReenviar(cfg) {

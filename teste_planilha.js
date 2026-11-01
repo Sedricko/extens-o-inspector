@@ -175,4 +175,11 @@ sheets.Mot = [sheets.Mot[0], ['a14', 'z', 'EM ROTA', '111.111.111-11']];
 assert.deepStrictEqual(run('importarDaBase()'), { novas: 0, fechar: 1, cancelar: 0 });
 assert.strictEqual(col(achar('a14'), 'STATUS'), 'FECHAR', 'tem motorista na Mot, mesmo Situacao nao sendo FECHADO: fecha');
 
+// doPost com "acao": o painel do bot chama as funcoes da planilha de longe, sem abrir o Apps Script
+const r1 = post({ token: SENHA, acao: 'importarDaBase' });
+assert.deepStrictEqual(r1, { ok: true, resultado: { novas: 0, fechar: 0, cancelar: 0 } });
+assert.deepStrictEqual(post({ token: SENHA, acao: 'inventada' }), { ok: false, erro: 'acao desconhecida: inventada' });
+assert.deepStrictEqual(post({ token: 'errada', acao: 'importarDaBase' }), { ok: false, erro: 'senha invalida' });
+assert.ok(sheets.Log.some(r => r[1] === 'Bot' && /^importarDaBase:/.test(r[2])), 'acao remota tambem registra na aba Log');
+
 console.log('OK: projeto unico (aplicativo da web + importador Base -> FRETES, sem planilha ativa e sem janelas)');
