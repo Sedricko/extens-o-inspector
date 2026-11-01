@@ -51,18 +51,27 @@ async function filtrarMeus(page, est) {
   }
   await publicado.click();
   await sleep(300);
-  // acha a caixinha de dentro da propria pagina (pela linha cujo texto bate com seu nome) e clica nativamente;
-  // confere se marcou de verdade antes de confirmar, tenta de novo se nao marcou
+  // acha o controle (checkbox de verdade ou um aria-checked/aria-pressed, como o site faz nos outros botoes)
+  // na linha cujo texto bate com seu nome, e clica com a sequencia completa de eventos (so "click" nao basta
+  // nesses componentes customizados: precisa pointerdown/mousedown/pointerup/mouseup tambem, como ja funciona
+  // no preenchimento do formulario). Confere se marcou de verdade antes de confirmar, tenta de novo se nao marcou.
   let marcada = false;
   for (let i = 0; i < 5 && !marcada; i++) {
     if (i > 0) await sleep(400);
     marcada = await page.evaluate(nome => {
       const norm = s => String(s || '').replace(/\s+/g, ' ').trim();
-      const caixas = [...document.querySelectorAll('input[type=checkbox]')];
-      const alvo = caixas.find(c => { const linha = c.closest('label') || c.parentElement; return linha && norm(linha.innerText).includes(norm(nome)); });
+      const ligado = el => {
+        if (el.matches('input[type=checkbox]')) return el.checked;
+        const a = el.closest('[aria-checked],[aria-pressed],[aria-selected]');
+        const v = a && (a.getAttribute('aria-checked') || a.getAttribute('aria-pressed') || a.getAttribute('aria-selected'));
+        return v === 'true';
+      };
+      const clicar = el => { el.scrollIntoView({ block: 'center' }); for (const t of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) el.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })); };
+      const candidatos = [...document.querySelectorAll('input[type=checkbox],[aria-checked],[aria-pressed]')];
+      const alvo = candidatos.find(el => { const linha = el.closest('label') || el.parentElement; return linha && norm(linha.innerText).includes(norm(nome)); });
       if (!alvo) return false;
-      if (!alvo.checked) alvo.click();
-      return alvo.checked;
+      if (!ligado(alvo)) clicar(alvo);
+      return ligado(alvo);
     }, nome).catch(() => false);
   }
   if (!marcada) throw new Error('nao consegui marcar seu nome no filtro "Publicado por"');
