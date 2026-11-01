@@ -133,6 +133,7 @@ async function salvarCfg(b) {
   if (b.fechar) novo.fechar = b.fechar === 'desativar' ? 'desativar' : 'excluir';
   if (b.apagarTudo !== undefined) novo.apagarTudo = !!b.apagarTudo;
   if (b.conferirZero !== undefined) novo.conferirZero = !!b.conferirZero;
+  if (b.conferirSumidos !== undefined) novo.conferirSumidos = !!b.conferirSumidos;
   cfg = novo; fs.writeFileSync(arqCfg, JSON.stringify(cfg, null, 2));
   if (app) { await app.chrome.storage.local.set({ syncCfg: { ...cfg, auto: true } }); agendar(); }
   else if (!ctx && estado.fase !== 'gravando') iniciarBot();

@@ -38,6 +38,7 @@ input,select{font:inherit;padding:7px;border-radius:6px;border:1px solid var(--b
 <label>Ao fechar<select name="fechar"><option value="excluir">Excluir</option><option value="desativar">Desativar</option></select></label>
 <label class="c"><input type="checkbox" name="apagarTudo"> Apagar todos os MEUS fretes antes de republicar</label>
 <label class="c"><input type="checkbox" name="conferirZero"> Conferir que não sobrou nenhum frete meu antes de publicar</label>
+<label class="c"><input type="checkbox" name="conferirSumidos"> Comparar com o Fretebras de verdade (republica sozinho o que sumiu de lá)</label>
 <div><button class="p" type="submit">Salvar</button> <span id="msg" class="mut"></span></div></form></div>
 <div class="card"><b>Mensagens</b><pre id="logs"></pre></div></main>
 <script>
