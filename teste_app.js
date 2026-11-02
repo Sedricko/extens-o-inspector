@@ -153,6 +153,19 @@ const MEUS = `<!doctype html><meta charset="utf-8"><title>Meus fretes</title><bo
     const r = await app.rodar(`planilhaAcao('republicarAbertas')`);
     assert.deepStrictEqual(r, { fiz: 'republicarAbertas' });
     assert.deepStrictEqual(acoesPlanilha, ['republicarAbertas']);
+
+    // 7) fechar com codigo ambiguo (achou mais de 1 frete): nao fecha nada, e NAO deixa a aba aberta (vazamento)
+    reset(0, 0);
+    fretes.push({ id: 'Z1', freightCode: 'ZZ-1', freightStatus: 'enabled', publisher: { id: EU.id_hashed, fullName: NOME } });
+    fretes.push({ id: 'Z2', freightCode: 'ZZ-1X', freightStatus: 'enabled', publisher: { id: EU.id_hashed, fullName: NOME } });
+    await new Promise(res => setTimeout(res, 500)); // deixa paginas de cenarios anteriores terminarem de fechar sozinhas
+    const antesDasPaginas = ctx.pages().length;
+    const amb = await app.rodar(`fbClose('ZZ-1', 'desativar')`);
+    assert.strictEqual(amb.ok, false, 'codigo ambiguo: nao fecha');
+    assert.ok(/achou 2 fretes/.test(amb.error), amb.error);
+    await new Promise(res => setTimeout(res, 500));
+    assert.strictEqual(ctx.pages().length, antesDasPaginas, 'a aba foi fechada mesmo falhando (sem vazar)');
+
     console.log('OK teste_app');
   } finally { await ctx.close(); site.close(); planilha.close(); }
 })().catch(e => { console.error(e); process.exit(1); });

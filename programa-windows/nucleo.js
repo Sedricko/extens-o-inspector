@@ -73,10 +73,8 @@ function criar({ ctx, arquivoDados, escrever = console.log }) {
     const id = ++seq; paginas.set(id, page);
     try {
       await meus.filtrarMeus(page, est);
-      const r = await chrome.tabs.sendMessage(id, { cmd: 'close', arg: { codigo, acao } });
-      if (r.ok) await chrome.tabs.remove(id);
-      return r;
-    } catch (e) { await chrome.tabs.remove(id); throw e; }
+      return await chrome.tabs.sendMessage(id, { cmd: 'close', arg: { codigo, acao } });
+    } finally { await chrome.tabs.remove(id); } // fecha a aba sempre, deu certo ou nao (senao acumula aba a cada falha)
   };
 
   // fb_publisher.js roda dentro de cada pagina (como content script no mundo principal da pagina)

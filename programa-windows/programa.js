@@ -73,7 +73,8 @@ function agendar() {
 
 async function manterSessao() {
   if (!ctx || emRodada || estado.fase !== 'rodando') return;
-  try { if (!(await entrar(ctx, SITE, cfgLogin(), sessao)).match(/logado|entrou/)) { estado.fase = 'login'; estado.motivo = 'A sessão caiu: entre na janela do navegador.'; avisar('Bot de Fretes: sessão caiu', estado.motivo); await janela('normal'); await aguardaLogin(); await janela('minimized'); estado.fase = 'rodando'; estado.motivo = ''; } } catch {}
+  try { if (!(await entrar(ctx, SITE, cfgLogin(), sessao)).match(/logado|entrou/)) { estado.fase = 'login'; estado.motivo = 'A sessão caiu: entre na janela do navegador.'; avisar('Bot de Fretes: sessão caiu', estado.motivo); await janela('normal'); await aguardaLogin(); await janela('minimized'); estado.fase = 'rodando'; estado.motivo = ''; } }
+  catch (e) { log('Erro ao manter a sessão: ' + e.message, 'erro'); } // nunca engole em silencio: senao um problema fica escondido ate a proxima rodada falhar
 }
 
 async function rodada() {

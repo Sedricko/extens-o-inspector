@@ -3,6 +3,30 @@
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const global = msg => Object.assign(new Error(msg), { global: true });
 
+// Clica de dentro da pagina com a sequencia completa de eventos: muitos botoes/caixinhas do site sao
+// componentes customizados que so reagem a pointerdown/mousedown/pointerup/mouseup, nao a um ".click()" simples.
+// achar roda dentro da pagina (serializado como texto) e deve devolver o elemento, ou null/undefined se nao achou.
+async function cliqueRobusto(page, achar, { tentativas = 5, verificar } = {}) {
+  let ok = false;
+  for (let i = 0; i < tentativas && !ok; i++) {
+    if (i > 0) await sleep(400);
+    ok = await page.evaluate(({ achar, verificar }) => {
+      const alvo = new Function('return (' + achar + ')()')();
+      if (!alvo) return false;
+      const ligado = el => {
+        if (el.matches('input[type=checkbox]')) return el.checked;
+        const a = el.closest('[aria-checked],[aria-pressed],[aria-selected]');
+        const v = a && (a.getAttribute('aria-checked') || a.getAttribute('aria-pressed') || a.getAttribute('aria-selected'));
+        return v === 'true';
+      };
+      alvo.scrollIntoView({ block: 'center' });
+      if (!verificar || !ligado(alvo)) for (const t of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) alvo.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }));
+      return verificar ? ligado(alvo) : true;
+    }, { achar, verificar }).catch(() => false);
+  }
+  return ok;
+}
+
 // Liga uma pagina (nova ou ja existente) para acompanhar as respostas de Meus Fretes. Pode ser chamado 1x so por pagina.
 function escutar(page) {
   const est = { n: 0, lista: null, eu: null, publicadores: null, apagou: null };
@@ -53,29 +77,13 @@ async function filtrarMeus(page, est) {
   await sleep(300);
   // acha o controle (checkbox de verdade ou um aria-checked/aria-pressed, como o site faz nos outros botoes)
   // na linha cujo texto bate com seu nome, e clica com a sequencia completa de eventos (so "click" nao basta
-  // nesses componentes customizados: precisa pointerdown/mousedown/pointerup/mouseup tambem, como ja funciona
-  // no preenchimento do formulario). Confere se marcou de verdade antes de confirmar, tenta de novo se nao marcou.
-  let marcada = false;
-  for (let i = 0; i < 5 && !marcada; i++) {
-    if (i > 0) await sleep(400);
-    marcada = await page.evaluate(nome => {
-      const norm = s => String(s || '').replace(/\s+/g, ' ').trim();
-      const ligado = el => {
-        if (el.matches('input[type=checkbox]')) return el.checked;
-        const a = el.closest('[aria-checked],[aria-pressed],[aria-selected]');
-        const v = a && (a.getAttribute('aria-checked') || a.getAttribute('aria-pressed') || a.getAttribute('aria-selected'));
-        return v === 'true';
-      };
-      const clicar = el => { el.scrollIntoView({ block: 'center' }); for (const t of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) el.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })); };
-      const candidatos = [...document.querySelectorAll('input[type=checkbox],[aria-checked],[aria-pressed]')];
-      const alvo = candidatos.find(el => { const linha = el.closest('label') || el.parentElement; return linha && norm(linha.innerText).includes(norm(nome)); });
-      if (!alvo) return false;
-      if (!ligado(alvo)) clicar(alvo);
-      return ligado(alvo);
-    }, nome).catch(() => false);
-  }
+  // nesses componentes customizados). Confere se marcou de verdade antes de confirmar, tenta de novo se nao.
+  const marcada = await cliqueRobusto(page, `() => { const norm = s => String(s || '').replace(/\\s+/g, ' ').trim();
+    const nome = ${JSON.stringify(nome)}; const linhaBate = el => { const l = el.closest('label') || el.parentElement; return l && norm(l.innerText).includes(norm(nome)); };
+    return [...document.querySelectorAll('input[type=checkbox],[aria-checked],[aria-pressed]')].find(linhaBate); }`, { verificar: true });
   if (!marcada) throw new Error('nao consegui marcar seu nome no filtro "Publicado por"');
-  await page.getByText('Confirmar', { exact: true }).first().click();
+  const confirmou = await cliqueRobusto(page, `() => [...document.querySelectorAll('*')].find(e => e.children.length === 0 && e.textContent.trim() === 'Confirmar')`);
+  if (!confirmou) throw new Error('nao consegui clicar em "Confirmar" no filtro');
   await novaLista(est, antes);
   if (!soMeus(est)) throw new Error('o filtro "so meus" nao ficou certo: nao fiz nada');
   return est.eu;
@@ -114,15 +122,17 @@ async function apagarMeus(ctx, base, escrever = () => {}) {
       if (!soMeus(est)) throw new Error('a lista deixou de ser so sua: parei sem apagar');
       const ids = est.lista.json.data.map(f => f.id);
       if (!ids.length) return { apagados };
-      const marcar = page.locator('label:has(input[type=checkbox])').first();
-      await marcar.click();
+      const marcouTodos = await cliqueRobusto(page, `() => document.querySelector('input[type=checkbox],[aria-checked],[aria-pressed]')`, { verificar: true });
+      if (!marcouTodos) throw new Error('nao consegui marcar "selecionar todos"');
       await page.getByText('Excluir', { exact: true }).first().waitFor({ timeout: 10000 });
-      const marcados = await page.locator('input[type=checkbox]:checked').count();
+      const marcados = await page.evaluate(() => [...document.querySelectorAll('input[type=checkbox]:checked,[aria-checked="true"],[aria-pressed="true"]')].length);
       if (marcados < ids.length) throw new Error(`marquei ${marcados} de ${ids.length} fretes: parei sem apagar`);
       est.apagou = null; const antes = est.n;
-      await page.getByText('Excluir', { exact: true }).first().click();
+      const abriuConfirmacao = await cliqueRobusto(page, `() => [...document.querySelectorAll('*')].find(e => e.children.length === 0 && e.textContent.trim() === 'Excluir')`);
+      if (!abriuConfirmacao) throw new Error('nao consegui clicar em "Excluir"');
       await page.getByText(/^Excluir frete/).first().waitFor({ timeout: 10000 });
-      await page.getByText('Excluir', { exact: true }).last().click();
+      const confirmouExclusao = await cliqueRobusto(page, `() => [...document.querySelectorAll('*')].filter(e => e.children.length === 0 && e.textContent.trim() === 'Excluir').pop()`);
+      if (!confirmouExclusao) throw new Error('nao consegui confirmar a exclusao');
       for (let i = 0; i < 120 && !est.apagou; i++) await sleep(250);
       if (!est.apagou) throw new Error('a Central nao confirmou a exclusao');
       const { corpo, res } = est.apagou;

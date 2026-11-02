@@ -168,9 +168,11 @@ function doPost(e) {
     const corpo = JSON.parse(e.postData.contents);
     frSenha_(corpo.token);
     if (corpo.acao) {
+      // sem lock aqui: importarDaBase (e quem a chama) ja protege a propria escrita com o lock dela;
+      // pegar o lock aqui tambem e liberar so no fim do doPost causaria um lock aninhado que a funcao
+      // chamada libera cedo demais (o lock do Apps Script e por execucao, nao por chamada).
       const fn = FR_ACOES[corpo.acao];
       if (!fn) throw new Error('acao desconhecida: ' + corpo.acao);
-      lock.waitLock(20000);
       const resultado = fn() || {};
       frLog_('Bot', `${corpo.acao}: ${JSON.stringify(resultado)}`);
       return frJson_({ ok: true, resultado });
